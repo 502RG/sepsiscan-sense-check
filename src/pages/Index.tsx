@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,45 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, Heart, Thermometer, Clock, Shield, User, UserCheck, TrendingUp, Download, Bell } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-
-interface BaselineVitals {
-  temperature: number;
-  heartRate: number;
-  normalSymptoms: string;
-}
-
-interface UserInputs {
-  temperature: string;
-  heartRate: string;
-  symptoms: string;
-  symptomDuration: string;
-  activityLevel: string;
-  medications: string;
-  userMode: string;
-  subjectiveFeedback?: string;
-}
-
-interface RiskAssessment {
-  level: 'Low' | 'Moderate' | 'High';
-  confidence: 'Low' | 'Medium' | 'High';
-  flaggedRisks: string[];
-  recommendation: string;
-  reassurance: string;
-  patternAnalysis: string[];
-  trendAnalysis?: string;
-  alertLevel?: 'None' | 'Monitor' | 'Urgent';
-}
-
-interface HistoricalData {
-  date: string;
-  temperature: number;
-  heartRate: number;
-  symptoms: string;
-  riskLevel: string;
-}
+import { UserInputs, RiskAssessment, UserProfile } from "@/types/sepsis";
+import { analyzeSymptomClusters, performTrendAnalysis, performRiskAnalysis } from "@/utils/riskAnalysis";
+import ProfileSelection from "@/components/ProfileSelection";
+import HealthTrackingSummary from "@/components/HealthTrackingSummary";
 
 const Index = () => {
-  const [step, setStep] = useState<'greeting' | 'assessment' | 'subjective' | 'results'>('greeting');
+  const [step, setStep] = useState<'profile' | 'greeting' | 'assessment' | 'subjective' | 'results'>('profile');
+  const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [userInputs, setUserInputs] = useState<UserInputs>({
     temperature: '',
     heartRate: '',
@@ -58,28 +28,43 @@ const Index = () => {
     medications: '',
     userMode: 'Self'
   });
-  const [baselineVitals, setBaselineVitals] = useState<BaselineVitals | null>(null);
-  const [showBaseline, setShowBaseline] = useState(false);
   const [riskAssessment, setRiskAssessment] = useState<RiskAssessment | null>(null);
-  const [showExport, setShowExport] = useState(false);
 
-  // Simulate historical data for trend analysis
-  const [historicalData] = useState<HistoricalData[]>([
-    {
-      date: '2025-06-30',
-      temperature: 99.2,
-      heartRate: 78,
-      symptoms: 'mild fatigue',
-      riskLevel: 'Low'
-    },
-    {
-      date: '2025-06-29',
-      temperature: 98.8,
-      heartRate: 72,
-      symptoms: 'none',
-      riskLevel: 'Low'
+  // Load profiles from localStorage on component mount
+  useEffect(() => {
+    const savedProfiles = localStorage.getItem('sepsiscan-profiles');
+    if (savedProfiles) {
+      setProfiles(JSON.parse(savedProfiles));
     }
-  ]);
+  }, []);
+
+  // Save profiles to localStorage whenever profiles change
+  useEffect(() => {
+    localStorage.setItem('sepsiscan-profiles', JSON.stringify(profiles));
+  }, [profiles]);
+
+  const handleProfileCreate = (profileData: Omit<UserProfile, 'id' | 'historicalData' | 'createdAt'>) => {
+    const newProfile: UserProfile = {
+      ...profileData,
+      id: Date.now().toString(),
+      historicalData: [],
+      createdAt: new Date().toISOString(),
+    };
+    
+    setProfiles([...profiles, newProfile]);
+    setSelectedProfile(newProfile);
+    setStep('greeting');
+    
+    toast({
+      title: "Profile Created",
+      description: `Profile for ${newProfile.name} has been created successfully.`,
+    });
+  };
+
+  const handleProfileSelect = (profile: UserProfile) => {
+    setSelectedProfile(profile);
+    setStep('greeting');
+  };
 
   const startAssessment = () => {
     setStep('assessment');
@@ -94,170 +79,42 @@ const Index = () => {
     if (needsSubjectiveFeedback) {
       setStep('subjective');
     } else {
-      performRiskAnalysis();
+      performRiskAnalysisAndSave();
     }
   };
 
-  const analyzeSymptomClusters = (symptoms: string, temp: number, hr: number) => {
-    const patterns = [];
-    const symptomLower = symptoms.toLowerCase();
-    
-    // High-risk combination: Fever + Tachycardia + Serious symptoms
-    if (temp > 100.4 && hr > 100) {
-      if (symptomLower.includes('chills') || symptomLower.includes('confusion')) {
-        patterns.push('Critical Pattern: Fever + Elevated HR + Systemic symptoms (chills/confusion) suggests severe infection');
-      }
-      if (symptomLower.includes('breathing') || symptomLower.includes('shortness')) {
-        patterns.push('High-Risk Pattern: Fever + Tachycardia + Respiratory symptoms');
-      }
-    }
-    
-    // Moderate risk patterns
-    const concerningSymptoms = ['fatigue', 'chills', 'confusion', 'wound', 'breathing', 'nausea', 'dizziness'];
-    const symptomCount = concerningSymptoms.filter(symptom => symptomLower.includes(symptom)).length;
-    
-    if (symptomCount >= 3) {
-      patterns.push(`Multi-symptom cluster: ${symptomCount} concerning symptoms present`);
-    }
-    
-    if (symptomCount >= 2 && userInputs.symptomDuration === 'More than 3 days') {
-      patterns.push('Persistent multi-symptom pattern over 3+ days');
-    }
-    
-    return patterns;
-  };
+  const performRiskAnalysisAndSave = () => {
+    if (!selectedProfile) return;
 
-  const performTrendAnalysis = (temp: number, hr: number) => {
-    if (historicalData.length === 0) return null;
-    
-    const lastEntry = historicalData[0];
-    const tempDiff = temp - lastEntry.temperature;
-    const hrDiff = hr - lastEntry.heartRate;
-    
-    let trendAnalysis = '';
-    
-    if (tempDiff > 1.0) {
-      trendAnalysis += `Temperature increased by ${tempDiff.toFixed(1)}°F from last check-in. `;
-    }
-    
-    if (hrDiff > 10) {
-      trendAnalysis += `Heart rate increased by ${hrDiff} bpm from last check-in. `;
-    }
-    
-    if (baselineVitals) {
-      const baselineTempDiff = temp - baselineVitals.temperature;
-      const baselineHrDiff = hr - baselineVitals.heartRate;
-      
-      if (baselineTempDiff > 1.5) {
-        trendAnalysis += `Temperature is ${baselineTempDiff.toFixed(1)}°F above your personal baseline. `;
-      }
-      
-      if (baselineHrDiff > 15) {
-        trendAnalysis += `Heart rate is ${baselineHrDiff} bpm above your personal baseline. `;
-      }
-    }
-    
-    return trendAnalysis || 'Vitals are within normal range compared to recent history.';
-  };
-
-  const performRiskAnalysis = () => {
     const temp = parseFloat(userInputs.temperature);
     const hr = parseFloat(userInputs.heartRate);
     
-    let riskScore = 0;
-    let flaggedRisks: string[] = [];
+    const assessment = performRiskAnalysis(userInputs, selectedProfile);
+    setRiskAssessment(assessment);
     
-    // Temperature analysis
-    if (temp > 100.4) {
-      riskScore += 2;
-      flaggedRisks.push(`Elevated temperature (${temp}°F) indicates potential infection`);
-    }
+    // Save this check-in to the profile's historical data
+    const newHistoricalEntry = {
+      date: new Date().toLocaleDateString(),
+      temperature: temp,
+      heartRate: hr,
+      symptoms: userInputs.symptoms,
+      riskLevel: assessment.level,
+    };
     
-    // Heart rate analysis (adjusted for subjective feedback)
-    if (hr > 100 && userInputs.activityLevel === 'Resting') {
-      let hrRisk = 2;
-      
-      // Adjust based on subjective feedback
-      if (userInputs.subjectiveFeedback === 'I feel normal') {
-        hrRisk = 1;
-      } else if (userInputs.subjectiveFeedback === 'I feel very sick') {
-        hrRisk = 3;
-      }
-      
-      riskScore += hrRisk;
-      flaggedRisks.push(`Elevated resting heart rate (${hr} bpm) with subjective feeling: ${userInputs.subjectiveFeedback || 'not assessed'}`);
-    }
+    const updatedProfile = {
+      ...selectedProfile,
+      historicalData: [newHistoricalEntry, ...selectedProfile.historicalData],
+    };
     
-    // Symptom analysis
-    const concerningSymptoms = ['confusion', 'chills', 'breathing', 'wound', 'fatigue'];
-    const symptomCount = concerningSymptoms.filter(symptom => 
-      userInputs.symptoms.toLowerCase().includes(symptom)
-    ).length;
+    const updatedProfiles = profiles.map(p => 
+      p.id === selectedProfile.id ? updatedProfile : p
+    );
     
-    if (symptomCount > 0) {
-      riskScore += symptomCount;
-      flaggedRisks.push(`Sepsis-related symptoms detected: ${userInputs.symptoms}`);
-    }
-    
-    // Duration analysis
-    if (userInputs.symptomDuration === 'More than 3 days') {
-      riskScore += 1;
-      flaggedRisks.push('Persistent symptoms over 3 days increase concern');
-    }
-    
-    // Advanced pattern analysis
-    const patternAnalysis = analyzeSymptomClusters(userInputs.symptoms, temp, hr);
-    
-    // Adjust risk score based on patterns
-    if (patternAnalysis.some(pattern => pattern.includes('Critical Pattern'))) {
-      riskScore += 3;
-    } else if (patternAnalysis.some(pattern => pattern.includes('High-Risk Pattern'))) {
-      riskScore += 2;
-    }
-    
-    // Trend analysis
-    const trendAnalysis = performTrendAnalysis(temp, hr);
-    
-    // Determine risk level and recommendation
-    let level: 'Low' | 'Moderate' | 'High';
-    let confidence: 'Low' | 'Medium' | 'High';
-    let recommendation: string;
-    let alertLevel: 'None' | 'Monitor' | 'Urgent' = 'None';
-    
-    if (riskScore >= 6) {
-      level = 'High';
-      confidence = 'High';
-      recommendation = 'Seek urgent care immediately';
-      alertLevel = 'Urgent';
-    } else if (riskScore >= 4) {
-      level = 'Moderate';
-      confidence = 'High';
-      recommendation = 'Call your healthcare provider today';
-      alertLevel = 'Monitor';
-    } else if (riskScore >= 2) {
-      level = 'Moderate';
-      confidence = 'Medium';
-      recommendation = 'Monitor closely - recheck in 4-6 hours';
-      alertLevel = 'Monitor';
-    } else {
-      level = 'Low';
-      confidence = 'Medium';
-      recommendation = 'Continue monitoring - recheck in 12 hours';
-    }
-    
-    setRiskAssessment({
-      level,
-      confidence,
-      flaggedRisks,
-      recommendation,
-      reassurance: "Remember, this is an early warning tool, not a diagnosis. If you feel okay, keep monitoring and follow up as advised.",
-      patternAnalysis,
-      trendAnalysis,
-      alertLevel
-    });
+    setProfiles(updatedProfiles);
+    setSelectedProfile(updatedProfile);
     
     // Show smart alert if high risk
-    if (alertLevel === 'Urgent') {
+    if (assessment.alertLevel === 'Urgent') {
       toast({
         title: "🚨 SepsiScan Alert",
         description: "Your recent check-in indicates a potential increase in risk. Please monitor closely or consult a healthcare provider.",
@@ -269,10 +126,15 @@ const Index = () => {
   };
 
   const generateExportData = () => {
+    if (!selectedProfile || !riskAssessment) return;
+
     const today = new Date().toLocaleDateString();
     const exportData = {
       date: today,
-      patientInfo: {
+      profile: {
+        name: selectedProfile.name,
+        age: selectedProfile.age,
+        knownConditions: selectedProfile.knownConditions.join(', '),
         mode: userInputs.userMode,
         medications: userInputs.medications
       },
@@ -287,12 +149,12 @@ const Index = () => {
         subjectiveFeedback: userInputs.subjectiveFeedback
       },
       assessment: {
-        riskLevel: riskAssessment?.level,
-        confidence: riskAssessment?.confidence,
-        recommendation: riskAssessment?.recommendation,
-        flaggedRisks: riskAssessment?.flaggedRisks,
-        patternAnalysis: riskAssessment?.patternAnalysis,
-        trendAnalysis: riskAssessment?.trendAnalysis
+        riskLevel: riskAssessment.level,
+        confidence: riskAssessment.confidence,
+        recommendation: riskAssessment.recommendation,
+        flaggedRisks: riskAssessment.flaggedRisks,
+        patternAnalysis: riskAssessment.patternAnalysis,
+        trendAnalysis: riskAssessment.trendAnalysis
       }
     };
     
@@ -301,8 +163,11 @@ SEPSISCAN HEALTH ASSESSMENT REPORT
 Date: ${exportData.date}
 
 PATIENT INFORMATION:
-- Assessment completed by: ${exportData.patientInfo.mode}
-- Current medications: ${exportData.patientInfo.medications || 'None reported'}
+- Name: ${exportData.profile.name}
+- Age: ${exportData.profile.age}
+- Known Conditions: ${exportData.profile.knownConditions || 'None reported'}
+- Assessment completed by: ${exportData.profile.mode}
+- Current medications: ${exportData.profile.medications || 'None reported'}
 
 VITAL SIGNS:
 - Temperature: ${exportData.vitals.temperature}
@@ -337,7 +202,7 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SepsiScan_Report_${today.replace(/\//g, '-')}.txt`;
+    a.download = `SepsiScan_Report_${selectedProfile.name}_${today.replace(/\//g, '-')}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     
@@ -359,7 +224,6 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
       userMode: 'Self'
     });
     setRiskAssessment(null);
-    setShowExport(false);
   };
 
   const getRiskColor = (level: string) => {
@@ -388,6 +252,18 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     }
   };
 
+  if (step === 'profile') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
+        <ProfileSelection
+          profiles={profiles}
+          onProfileSelect={handleProfileSelect}
+          onProfileCreate={handleProfileCreate}
+        />
+      </div>
+    );
+  }
+
   if (step === 'greeting') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
@@ -396,10 +272,11 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
             <div className="mx-auto w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
               <Shield className="w-8 h-8 text-white" />
             </div>
-            <CardTitle className="text-2xl font-bold text-gray-900">SepsiScan</CardTitle>
+            <CardTitle className="text-2xl font-bold text-gray-900">
+              Welcome back, {selectedProfile?.name}!
+            </CardTitle>
             <p className="text-gray-600 mt-2">
-              Hi! I'm SepsiScan — here to help you catch potential signs of sepsis early. 
-              This takes less than 1 minute. Let's begin your daily check-in.
+              Ready for your health check-in? This takes less than 1 minute.
             </p>
           </CardHeader>
           <CardContent>
@@ -587,7 +464,7 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
               </div>
 
               <Button 
-                onClick={performRiskAnalysis}
+                onClick={performRiskAnalysisAndSave}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3"
                 disabled={!userInputs.subjectiveFeedback}
               >
@@ -600,10 +477,20 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     );
   }
 
-  if (step === 'results' && riskAssessment) {
+  if (step === 'results' && riskAssessment && selectedProfile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white p-4">
         <div className="max-w-3xl mx-auto space-y-6">
+          {/* Health Tracking Summary */}
+          <HealthTrackingSummary
+            profile={selectedProfile}
+            currentData={{
+              temperature: parseFloat(userInputs.temperature),
+              heartRate: parseFloat(userInputs.heartRate),
+              riskLevel: riskAssessment.level,
+            }}
+          />
+
           {/* Smart Alert Banner */}
           {riskAssessment.alertLevel !== 'None' && (
             <Card className="border-l-4 border-red-500 bg-red-50">
@@ -755,12 +642,12 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
             </Button>
             <Button 
               onClick={() => toast({
-                title: "Feature Coming Soon",
-                description: "In the full version, I'll track your health over time and notify your care team if needed."
+                title: "Data Saved",
+                description: `Check-in saved to ${selectedProfile.name}'s profile. Track trends over time!`
               })}
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
             >
-              Save & Track
+              ✓ Saved & Tracked
             </Button>
           </div>
 
