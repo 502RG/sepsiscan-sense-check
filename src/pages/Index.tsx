@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, Heart, Thermometer, Clock, Shield, User, UserCheck } from "lucide-react";
+import { AlertTriangle, Heart, Thermometer, Clock, Shield, User, UserCheck, TrendingUp, Download, Bell } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface BaselineVitals {
@@ -35,6 +34,17 @@ interface RiskAssessment {
   flaggedRisks: string[];
   recommendation: string;
   reassurance: string;
+  patternAnalysis: string[];
+  trendAnalysis?: string;
+  alertLevel?: 'None' | 'Monitor' | 'Urgent';
+}
+
+interface HistoricalData {
+  date: string;
+  temperature: number;
+  heartRate: number;
+  symptoms: string;
+  riskLevel: string;
 }
 
 const Index = () => {
@@ -51,6 +61,25 @@ const Index = () => {
   const [baselineVitals, setBaselineVitals] = useState<BaselineVitals | null>(null);
   const [showBaseline, setShowBaseline] = useState(false);
   const [riskAssessment, setRiskAssessment] = useState<RiskAssessment | null>(null);
+  const [showExport, setShowExport] = useState(false);
+
+  // Simulate historical data for trend analysis
+  const [historicalData] = useState<HistoricalData[]>([
+    {
+      date: '2025-06-30',
+      temperature: 99.2,
+      heartRate: 78,
+      symptoms: 'mild fatigue',
+      riskLevel: 'Low'
+    },
+    {
+      date: '2025-06-29',
+      temperature: 98.8,
+      heartRate: 72,
+      symptoms: 'none',
+      riskLevel: 'Low'
+    }
+  ]);
 
   const startAssessment = () => {
     setStep('assessment');
@@ -67,6 +96,68 @@ const Index = () => {
     } else {
       performRiskAnalysis();
     }
+  };
+
+  const analyzeSymptomClusters = (symptoms: string, temp: number, hr: number) => {
+    const patterns = [];
+    const symptomLower = symptoms.toLowerCase();
+    
+    // High-risk combination: Fever + Tachycardia + Serious symptoms
+    if (temp > 100.4 && hr > 100) {
+      if (symptomLower.includes('chills') || symptomLower.includes('confusion')) {
+        patterns.push('Critical Pattern: Fever + Elevated HR + Systemic symptoms (chills/confusion) suggests severe infection');
+      }
+      if (symptomLower.includes('breathing') || symptomLower.includes('shortness')) {
+        patterns.push('High-Risk Pattern: Fever + Tachycardia + Respiratory symptoms');
+      }
+    }
+    
+    // Moderate risk patterns
+    const concerningSymptoms = ['fatigue', 'chills', 'confusion', 'wound', 'breathing', 'nausea', 'dizziness'];
+    const symptomCount = concerningSymptoms.filter(symptom => symptomLower.includes(symptom)).length;
+    
+    if (symptomCount >= 3) {
+      patterns.push(`Multi-symptom cluster: ${symptomCount} concerning symptoms present`);
+    }
+    
+    if (symptomCount >= 2 && userInputs.symptomDuration === 'More than 3 days') {
+      patterns.push('Persistent multi-symptom pattern over 3+ days');
+    }
+    
+    return patterns;
+  };
+
+  const performTrendAnalysis = (temp: number, hr: number) => {
+    if (historicalData.length === 0) return null;
+    
+    const lastEntry = historicalData[0];
+    const tempDiff = temp - lastEntry.temperature;
+    const hrDiff = hr - lastEntry.heartRate;
+    
+    let trendAnalysis = '';
+    
+    if (tempDiff > 1.0) {
+      trendAnalysis += `Temperature increased by ${tempDiff.toFixed(1)}°F from last check-in. `;
+    }
+    
+    if (hrDiff > 10) {
+      trendAnalysis += `Heart rate increased by ${hrDiff} bpm from last check-in. `;
+    }
+    
+    if (baselineVitals) {
+      const baselineTempDiff = temp - baselineVitals.temperature;
+      const baselineHrDiff = hr - baselineVitals.heartRate;
+      
+      if (baselineTempDiff > 1.5) {
+        trendAnalysis += `Temperature is ${baselineTempDiff.toFixed(1)}°F above your personal baseline. `;
+      }
+      
+      if (baselineHrDiff > 15) {
+        trendAnalysis += `Heart rate is ${baselineHrDiff} bpm above your personal baseline. `;
+      }
+    }
+    
+    return trendAnalysis || 'Vitals are within normal range compared to recent history.';
   };
 
   const performRiskAnalysis = () => {
@@ -114,23 +205,44 @@ const Index = () => {
       flaggedRisks.push('Persistent symptoms over 3 days increase concern');
     }
     
+    // Advanced pattern analysis
+    const patternAnalysis = analyzeSymptomClusters(userInputs.symptoms, temp, hr);
+    
+    // Adjust risk score based on patterns
+    if (patternAnalysis.some(pattern => pattern.includes('Critical Pattern'))) {
+      riskScore += 3;
+    } else if (patternAnalysis.some(pattern => pattern.includes('High-Risk Pattern'))) {
+      riskScore += 2;
+    }
+    
+    // Trend analysis
+    const trendAnalysis = performTrendAnalysis(temp, hr);
+    
     // Determine risk level and recommendation
     let level: 'Low' | 'Moderate' | 'High';
     let confidence: 'Low' | 'Medium' | 'High';
     let recommendation: string;
+    let alertLevel: 'None' | 'Monitor' | 'Urgent' = 'None';
     
-    if (riskScore >= 5) {
+    if (riskScore >= 6) {
       level = 'High';
       confidence = 'High';
       recommendation = 'Seek urgent care immediately';
-    } else if (riskScore >= 3) {
+      alertLevel = 'Urgent';
+    } else if (riskScore >= 4) {
+      level = 'Moderate';
+      confidence = 'High';
+      recommendation = 'Call your healthcare provider today';
+      alertLevel = 'Monitor';
+    } else if (riskScore >= 2) {
       level = 'Moderate';
       confidence = 'Medium';
-      recommendation = 'Call your healthcare provider today';
+      recommendation = 'Monitor closely - recheck in 4-6 hours';
+      alertLevel = 'Monitor';
     } else {
       level = 'Low';
       confidence = 'Medium';
-      recommendation = 'Continue monitoring - recheck in 6 hours';
+      recommendation = 'Continue monitoring - recheck in 12 hours';
     }
     
     setRiskAssessment({
@@ -138,10 +250,101 @@ const Index = () => {
       confidence,
       flaggedRisks,
       recommendation,
-      reassurance: "Remember, this is an early warning tool, not a diagnosis. If you feel okay, keep monitoring and follow up as advised."
+      reassurance: "Remember, this is an early warning tool, not a diagnosis. If you feel okay, keep monitoring and follow up as advised.",
+      patternAnalysis,
+      trendAnalysis,
+      alertLevel
     });
     
+    // Show smart alert if high risk
+    if (alertLevel === 'Urgent') {
+      toast({
+        title: "🚨 SepsiScan Alert",
+        description: "Your recent check-in indicates a potential increase in risk. Please monitor closely or consult a healthcare provider.",
+        variant: "destructive"
+      });
+    }
+    
     setStep('results');
+  };
+
+  const generateExportData = () => {
+    const today = new Date().toLocaleDateString();
+    const exportData = {
+      date: today,
+      patientInfo: {
+        mode: userInputs.userMode,
+        medications: userInputs.medications
+      },
+      vitals: {
+        temperature: `${userInputs.temperature}°F`,
+        heartRate: `${userInputs.heartRate} bpm`,
+        activityLevel: userInputs.activityLevel
+      },
+      symptoms: {
+        description: userInputs.symptoms,
+        duration: userInputs.symptomDuration,
+        subjectiveFeedback: userInputs.subjectiveFeedback
+      },
+      assessment: {
+        riskLevel: riskAssessment?.level,
+        confidence: riskAssessment?.confidence,
+        recommendation: riskAssessment?.recommendation,
+        flaggedRisks: riskAssessment?.flaggedRisks,
+        patternAnalysis: riskAssessment?.patternAnalysis,
+        trendAnalysis: riskAssessment?.trendAnalysis
+      }
+    };
+    
+    const exportText = `
+SEPSISCAN HEALTH ASSESSMENT REPORT
+Date: ${exportData.date}
+
+PATIENT INFORMATION:
+- Assessment completed by: ${exportData.patientInfo.mode}
+- Current medications: ${exportData.patientInfo.medications || 'None reported'}
+
+VITAL SIGNS:
+- Temperature: ${exportData.vitals.temperature}
+- Heart Rate: ${exportData.vitals.heartRate}
+- Activity Level: ${exportData.vitals.activityLevel}
+
+SYMPTOMS:
+- Description: ${exportData.symptoms.description || 'None reported'}
+- Duration: ${exportData.symptoms.duration}
+- Subjective Feedback: ${exportData.symptoms.subjectiveFeedback || 'Not assessed'}
+
+RISK ASSESSMENT:
+- Risk Level: ${exportData.assessment.riskLevel}
+- Confidence: ${exportData.assessment.confidence}
+- Recommendation: ${exportData.assessment.recommendation}
+
+FLAGGED CONCERNS:
+${exportData.assessment.flaggedRisks?.map(risk => `- ${risk}`).join('\n') || 'None'}
+
+PATTERN ANALYSIS:
+${exportData.assessment.patternAnalysis?.map(pattern => `- ${pattern}`).join('\n') || 'No concerning patterns detected'}
+
+TREND ANALYSIS:
+${exportData.assessment.trendAnalysis || 'No trend data available'}
+
+---
+This assessment was generated by SepsiScan AI and is for informational purposes only. 
+It is not a medical diagnosis. Please consult with healthcare professionals for medical advice.
+    `;
+    
+    const blob = new Blob([exportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SepsiScan_Report_${today.replace(/\//g, '-')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Report Exported",
+      description: "Your health assessment report has been downloaded successfully."
+    });
   };
 
   const resetAssessment = () => {
@@ -156,6 +359,7 @@ const Index = () => {
       userMode: 'Self'
     });
     setRiskAssessment(null);
+    setShowExport(false);
   };
 
   const getRiskColor = (level: string) => {
@@ -173,6 +377,14 @@ const Index = () => {
       case 'Moderate': return 50;
       case 'Low': return 20;
       default: return 0;
+    }
+  };
+
+  const getAlertIcon = (alertLevel?: string) => {
+    switch (alertLevel) {
+      case 'Urgent': return <Bell className="w-5 h-5 text-red-500" />;
+      case 'Monitor': return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
+      default: return null;
     }
   };
 
@@ -392,6 +604,23 @@ const Index = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white p-4">
         <div className="max-w-3xl mx-auto space-y-6">
+          {/* Smart Alert Banner */}
+          {riskAssessment.alertLevel !== 'None' && (
+            <Card className="border-l-4 border-red-500 bg-red-50">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  {getAlertIcon(riskAssessment.alertLevel)}
+                  <h3 className="font-semibold text-red-900">SepsiScan Alert</h3>
+                </div>
+                <p className="text-red-800 mt-1">
+                  {riskAssessment.alertLevel === 'Urgent' 
+                    ? 'Your recent check-in indicates a potential increase in risk. Please monitor closely or consult a healthcare provider.'
+                    : 'Your symptoms warrant continued monitoring. Please recheck as recommended.'}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Risk Assessment Results */}
           <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
             <CardHeader>
@@ -427,6 +656,35 @@ const Index = () => {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Pattern Analysis */}
+              {riskAssessment.patternAnalysis.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Pattern Analysis:
+                  </h4>
+                  <ul className="space-y-2">
+                    {riskAssessment.patternAnalysis.map((pattern, index) => (
+                      <li key={index} className="flex items-start gap-2 text-gray-700">
+                        <span className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></span>
+                        {pattern}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Trend Analysis */}
+              {riskAssessment.trendAnalysis && (
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Trend Analysis:
+                  </h4>
+                  <p className="text-blue-800">{riskAssessment.trendAnalysis}</p>
                 </div>
               )}
 
@@ -469,6 +727,28 @@ const Index = () => {
             </CardContent>
           </Card>
 
+          {/* Export Options */}
+          <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Download className="w-5 h-5" />
+                Export Options
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                Would you like to export today's results for your doctor or personal tracking?
+              </p>
+              <Button 
+                onClick={generateExportData}
+                className="w-full bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Assessment Report
+              </Button>
+            </CardContent>
+          </Card>
+
           <div className="flex gap-4">
             <Button onClick={resetAssessment} variant="outline" className="flex-1">
               New Assessment
@@ -478,7 +758,7 @@ const Index = () => {
                 title: "Feature Coming Soon",
                 description: "In the full version, I'll track your health over time and notify your care team if needed."
               })}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
             >
               Save & Track
             </Button>
