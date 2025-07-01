@@ -12,7 +12,7 @@ import { AlertTriangle, Heart, Thermometer, Clock, Shield, User, UserCheck, Tren
 import { toast } from "@/hooks/use-toast";
 import { UserInputs, RiskAssessment, UserProfile } from "@/types/sepsis";
 import { analyzeSymptomClusters, performTrendAnalysis, performRiskAnalysis } from "@/utils/riskAnalysis";
-import ProfileSelection from "@/components/ProfileSelection";
+import ProfileManagement from "@/components/ProfileManagement";
 import HealthTrackingSummary from "@/components/HealthTrackingSummary";
 
 const Index = () => {
@@ -64,6 +64,23 @@ const Index = () => {
   const handleProfileSelect = (profile: UserProfile) => {
     setSelectedProfile(profile);
     setStep('greeting');
+  };
+
+  const handleProfileDelete = (profileId: string) => {
+    const profileToDelete = profiles.find(p => p.id === profileId);
+    const updatedProfiles = profiles.filter(p => p.id !== profileId);
+    setProfiles(updatedProfiles);
+    
+    // If we're deleting the currently selected profile, reset
+    if (selectedProfile?.id === profileId) {
+      setSelectedProfile(null);
+    }
+    
+    toast({
+      title: "Profile Deleted",
+      description: `Profile for ${profileToDelete?.name} has been permanently deleted.`,
+      variant: "destructive"
+    });
   };
 
   const startAssessment = () => {
@@ -255,10 +272,11 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
   if (step === 'profile') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
-        <ProfileSelection
+        <ProfileManagement
           profiles={profiles}
           onProfileSelect={handleProfileSelect}
           onProfileCreate={handleProfileCreate}
+          onProfileDelete={handleProfileDelete}
         />
       </div>
     );

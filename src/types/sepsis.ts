@@ -40,6 +40,7 @@ export interface UserProfile {
   name: string;
   age: number;
   knownConditions: string[];
+  currentMedications?: string;
   baseline?: BaselineVitals;
   historicalData: HistoricalData[];
   createdAt: string;
