@@ -1,4 +1,11 @@
+
 import { UserInputs, RiskAssessment, UserProfile, HistoricalData } from "@/types/sepsis";
+import { 
+  analyzeAdaptiveThresholds, 
+  estimateInfectionTimeline, 
+  getNightModeMessage,
+  getProviderIntegrationSuggestion
+} from "./enhancedRiskAnalysis";
 
 export const analyzeSymptomClusters = (symptoms: string, temp: number, hr: number, userInputs: UserInputs) => {
   const patterns = [];
@@ -69,14 +76,18 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   let riskScore = 0;
   let flaggedRisks: string[] = [];
   
-  // Temperature analysis
-  if (temp > 100.4) {
+  // Apply adaptive thresholds if available
+  const adaptiveTempThreshold = profile.adaptiveThresholds?.temperature || 100.4;
+  const adaptiveHRThreshold = profile.adaptiveThresholds?.heartRate || 100;
+  
+  // Temperature analysis with adaptive thresholding
+  if (temp > adaptiveTempThreshold) {
     riskScore += 2;
     flaggedRisks.push(`Elevated temperature (${temp}°F) indicates potential infection`);
   }
   
-  // Heart rate analysis (adjusted for subjective feedback)
-  if (hr > 100 && userInputs.activityLevel === 'Resting') {
+  // Heart rate analysis (adjusted for subjective feedback and adaptive thresholds)
+  if (hr > adaptiveHRThreshold && userInputs.activityLevel === 'Resting') {
     let hrRisk = 2;
     
     // Adjust based on subjective feedback
@@ -133,6 +144,11 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   // Trend analysis
   const trendAnalysis = performTrendAnalysis(temp, hr, profile);
   
+  // Get enhanced insights
+  const adaptiveThresholdSuggestion = analyzeAdaptiveThresholds(profile, hr, temp, userInputs.subjectiveFeedback);
+  const infectionTimelineEstimate = estimateInfectionTimeline(profile, userInputs.symptoms, userInputs.symptomDuration);
+  const nightModeMessage = getNightModeMessage();
+  
   // Determine risk level and recommendation
   let level: 'Low' | 'Moderate' | 'High';
   let confidence: 'Low' | 'Medium' | 'High';
@@ -160,6 +176,8 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
     recommendation = 'Continue monitoring - recheck in 12 hours';
   }
   
+  const providerIntegrationSuggestion = getProviderIntegrationSuggestion(level, alertLevel);
+  
   return {
     level,
     confidence,
@@ -168,6 +186,10 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
     reassurance: "Remember, this is an early warning tool, not a diagnosis. If you feel okay, keep monitoring and follow up as advised.",
     patternAnalysis,
     trendAnalysis,
-    alertLevel
+    alertLevel,
+    adaptiveThresholdSuggestion,
+    infectionTimelineEstimate,
+    nightModeMessage,
+    providerIntegrationSuggestion
   };
 };

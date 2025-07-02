@@ -25,6 +25,10 @@ export interface RiskAssessment {
   patternAnalysis: string[];
   trendAnalysis?: string;
   alertLevel?: 'None' | 'Monitor' | 'Urgent';
+  adaptiveThresholdSuggestion?: string;
+  infectionTimelineEstimate?: string;
+  nightModeMessage?: string;
+  providerIntegrationSuggestion?: string;
 }
 
 export interface HistoricalData {
@@ -33,6 +37,8 @@ export interface HistoricalData {
   heartRate: number;
   symptoms: string;
   riskLevel: string;
+  timestamp: number;
+  subjectiveFeedback?: string;
 }
 
 export interface UserProfile {
@@ -44,4 +50,17 @@ export interface UserProfile {
   baseline?: BaselineVitals;
   historicalData: HistoricalData[];
   createdAt: string;
+  adaptiveThresholds?: {
+    heartRate?: number;
+    temperature?: number;
+    lastUpdated: string;
+  };
+  locationEnabled?: boolean;
+}
+
+export interface GeolocationAlert {
+  type: 'outbreak' | 'hospital_alert' | 'regional_risk';
+  message: string;
+  severity: 'info' | 'warning' | 'urgent';
+  location: string;
 }

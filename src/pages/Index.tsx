@@ -11,12 +11,16 @@ import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, Heart, Thermometer, Clock, Shield, User, UserCheck, TrendingUp, Download, Bell } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { UserInputs, RiskAssessment, UserProfile } from "@/types/sepsis";
-import { analyzeSymptomClusters, performTrendAnalysis, performRiskAnalysis } from "@/utils/riskAnalysis";
+import { performRiskAnalysis } from "@/utils/riskAnalysis";
+import { enableNightMode, isOfflineMode } from "@/utils/enhancedRiskAnalysis";
 import ProfileManagement from "@/components/ProfileManagement";
 import HealthTrackingSummary from "@/components/HealthTrackingSummary";
+import NavigationControls from "@/components/NavigationControls";
+import EnhancedInsights from "@/components/EnhancedInsights";
 
 const Index = () => {
   const [step, setStep] = useState<'profile' | 'greeting' | 'assessment' | 'subjective' | 'results'>('profile');
+  const [previousStep, setPreviousStep] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [userInputs, setUserInputs] = useState<UserInputs>({
@@ -29,6 +33,7 @@ const Index = () => {
     userMode: 'Self'
   });
   const [riskAssessment, setRiskAssessment] = useState<RiskAssessment | null>(null);
+  const [offlineMode, setOfflineMode] = useState(false);
 
   // Load profiles from localStorage on component mount
   useEffect(() => {
@@ -36,12 +41,54 @@ const Index = () => {
     if (savedProfiles) {
       setProfiles(JSON.parse(savedProfiles));
     }
+    
+    // Enable night mode if appropriate
+    enableNightMode();
+    
+    // Check offline status
+    setOfflineMode(isOfflineMode());
+    
+    // Listen for online/offline events
+    const handleOnline = () => setOfflineMode(false);
+    const handleOffline = () => setOfflineMode(true);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Save profiles to localStorage whenever profiles change
   useEffect(() => {
     localStorage.setItem('sepsiscan-profiles', JSON.stringify(profiles));
   }, [profiles]);
+
+  const handleBack = () => {
+    switch (step) {
+      case 'greeting':
+        setStep('profile');
+        break;
+      case 'assessment':
+        setStep('greeting');
+        break;
+      case 'subjective':
+        setStep('assessment');
+        break;
+      case 'results':
+        setStep(previousStep as any || 'assessment');
+        break;
+      default:
+        break;
+    }
+  };
+
+  const navigateToStep = (newStep: typeof step) => {
+    setPreviousStep(step);
+    setStep(newStep);
+  };
 
   const handleProfileCreate = (profileData: Omit<UserProfile, 'id' | 'historicalData' | 'createdAt'>) => {
     const newProfile: UserProfile = {
@@ -53,7 +100,7 @@ const Index = () => {
     
     setProfiles([...profiles, newProfile]);
     setSelectedProfile(newProfile);
-    setStep('greeting');
+    navigateToStep('greeting');
     
     toast({
       title: "Profile Created",
@@ -63,7 +110,7 @@ const Index = () => {
 
   const handleProfileSelect = (profile: UserProfile) => {
     setSelectedProfile(profile);
-    setStep('greeting');
+    navigateToStep('greeting');
   };
 
   const handleProfileDelete = (profileId: string) => {
@@ -71,7 +118,6 @@ const Index = () => {
     const updatedProfiles = profiles.filter(p => p.id !== profileId);
     setProfiles(updatedProfiles);
     
-    // If we're deleting the currently selected profile, reset
     if (selectedProfile?.id === profileId) {
       setSelectedProfile(null);
     }
@@ -83,8 +129,60 @@ const Index = () => {
     });
   };
 
+  const handleUpdateThreshold = () => {
+    if (!selectedProfile) return;
+    
+    const updatedProfile = {
+      ...selectedProfile,
+      adaptiveThresholds: {
+        heartRate: parseFloat(userInputs.heartRate),
+        temperature: parseFloat(userInputs.temperature),
+        lastUpdated: new Date().toISOString()
+      }
+    };
+    
+    const updatedProfiles = profiles.map(p => 
+      p.id === selectedProfile.id ? updatedProfile : p
+    );
+    
+    setProfiles(updatedProfiles);
+    setSelectedProfile(updatedProfile);
+    
+    toast({
+      title: "Threshold Updated",
+      description: "Your personal baseline thresholds have been updated based on your recent patterns.",
+    });
+  };
+
+  const handleContactProvider = () => {
+    toast({
+      title: "Provider Integration",
+      description: "This feature will be available when connected to your healthcare provider's system.",
+    });
+  };
+
+  const handleEnableLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          toast({
+            title: "Location Enabled",
+            description: "You'll now receive local health alerts and outbreak notifications.",
+          });
+        },
+        (error) => {
+          toast({
+            title: "Location Access Denied",
+            description: "Enable location access in your browser settings to receive local health alerts.",
+            variant: "destructive"
+          });
+        }
+      );
+    }
+  };
+
   const startAssessment = () => {
-    setStep('assessment');
+    navigateToStep('assessment');
   };
 
   const checkForSubjectiveFeedback = () => {
@@ -94,7 +192,7 @@ const Index = () => {
     const needsSubjectiveFeedback = (temp > 100.4) || (hr > 100 && userInputs.activityLevel === 'Resting');
     
     if (needsSubjectiveFeedback) {
-      setStep('subjective');
+      navigateToStep('subjective');
     } else {
       performRiskAnalysisAndSave();
     }
@@ -116,6 +214,8 @@ const Index = () => {
       heartRate: hr,
       symptoms: userInputs.symptoms,
       riskLevel: assessment.level,
+      timestamp: Date.now(),
+      subjectiveFeedback: userInputs.subjectiveFeedback,
     };
     
     const updatedProfile = {
@@ -139,7 +239,13 @@ const Index = () => {
       });
     }
     
-    setStep('results');
+    navigateToStep('results');
+    
+    // Sync data when back online
+    if (!offlineMode && navigator.onLine) {
+      // Here you would sync with backend when available
+      console.log('Syncing data with backend...');
+    }
   };
 
   const generateExportData = () => {
@@ -230,7 +336,7 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
   };
 
   const resetAssessment = () => {
-    setStep('greeting');
+    navigateToStep('greeting');
     setUserInputs({
       temperature: '',
       heartRate: '',
@@ -287,6 +393,11 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-xl border-0 bg-white/80 backdrop-blur">
           <CardHeader className="text-center pb-6">
+            <NavigationControls 
+              onBack={handleBack}
+              showBack={true}
+              currentStep="1"
+            />
             <div className="mx-auto w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
               <Shield className="w-8 h-8 text-white" />
             </div>
@@ -305,7 +416,7 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
               Start Health Assessment
             </Button>
             <p className="text-xs text-gray-500 text-center mt-4">
-              Your information is secure and confidential.
+              Your information is secure and confidential. At any time, you can use the 🔙 back button to review or change your previous answers.
             </p>
           </CardContent>
         </Card>
@@ -319,6 +430,11 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
         <div className="max-w-2xl mx-auto">
           <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
             <CardHeader>
+              <NavigationControls 
+                onBack={handleBack}
+                showBack={true}
+                currentStep="2"
+              />
               <CardTitle className="flex items-center gap-2">
                 <Heart className="w-5 h-5 text-red-500" />
                 Health Assessment
@@ -450,6 +566,11 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
         <div className="max-w-2xl mx-auto">
           <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
             <CardHeader>
+              <NavigationControls 
+                onBack={handleBack}
+                showBack={true}
+                currentStep="3"
+              />
               <CardTitle className="flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600" />
                 Subjective Feedback on Vitals
@@ -499,6 +620,21 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white p-4">
         <div className="max-w-3xl mx-auto space-y-6">
+          <NavigationControls 
+            onBack={handleBack}
+            showBack={true}
+            currentStep="4"
+          />
+
+          {/* Enhanced Insights Component */}
+          <EnhancedInsights
+            riskAssessment={riskAssessment}
+            isOffline={offlineMode}
+            onUpdateThreshold={handleUpdateThreshold}
+            onContactProvider={handleContactProvider}
+            onEnableLocation={handleEnableLocation}
+          />
+
           {/* Health Tracking Summary */}
           <HealthTrackingSummary
             profile={selectedProfile}
