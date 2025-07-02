@@ -1,4 +1,3 @@
-
 import { UserInputs, RiskAssessment, UserProfile, HistoricalData } from "@/types/sepsis";
 import { 
   analyzeAdaptiveThresholds, 
@@ -6,6 +5,12 @@ import {
   getNightModeMessage,
   getProviderIntegrationSuggestion
 } from "./enhancedRiskAnalysis";
+import { 
+  analyzeConversationalMemory, 
+  checkMissedCheckins, 
+  detectExercisePattern,
+  getTimeOfDayInsights
+} from "./conversationalMemory";
 
 export const analyzeSymptomClusters = (symptoms: string, temp: number, hr: number, userInputs: UserInputs) => {
   const patterns = [];
@@ -39,30 +44,35 @@ export const analyzeSymptomClusters = (symptoms: string, temp: number, hr: numbe
 export const performTrendAnalysis = (temp: number, hr: number, profile: UserProfile) => {
   if (profile.historicalData.length === 0) return 'No previous data for comparison. This is your first check-in!';
   
-  const lastEntry = profile.historicalData[0];
-  const tempDiff = temp - lastEntry.temperature;
-  const hrDiff = hr - lastEntry.heartRate;
+  // Get the second most recent entry for better comparison (not the just-saved current entry)
+  const comparisonEntry = profile.historicalData.length > 1 ? profile.historicalData[1] : profile.historicalData[0];
+  const tempDiff = temp - comparisonEntry.temperature;
+  const hrDiff = hr - comparisonEntry.heartRate;
   
   let trendAnalysis = '';
   
-  if (tempDiff > 1.0) {
-    trendAnalysis += `Temperature increased by ${tempDiff.toFixed(1)}°F from last check-in. `;
+  if (Math.abs(tempDiff) > 0.3) {
+    const direction = tempDiff > 0 ? 'increased' : 'decreased';
+    trendAnalysis += `Temperature ${direction} by ${Math.abs(tempDiff).toFixed(1)}°F from last check-in. `;
   }
   
-  if (hrDiff > 10) {
-    trendAnalysis += `Heart rate increased by ${hrDiff} bpm from last check-in. `;
+  if (Math.abs(hrDiff) > 5) {
+    const direction = hrDiff > 0 ? 'increased' : 'decreased';
+    trendAnalysis += `Heart rate ${direction} by ${Math.abs(hrDiff)} bpm from last check-in. `;
   }
   
   if (profile.baseline) {
     const baselineTempDiff = temp - profile.baseline.temperature;
     const baselineHrDiff = hr - profile.baseline.heartRate;
     
-    if (baselineTempDiff > 1.5) {
-      trendAnalysis += `Temperature is ${baselineTempDiff.toFixed(1)}°F above your personal baseline. `;
+    if (Math.abs(baselineTempDiff) > 1.0) {
+      const direction = baselineTempDiff > 0 ? 'above' : 'below';
+      trendAnalysis += `Temperature is ${Math.abs(baselineTempDiff).toFixed(1)}°F ${direction} your personal baseline. `;
     }
     
-    if (baselineHrDiff > 15) {
-      trendAnalysis += `Heart rate is ${baselineHrDiff} bpm above your personal baseline. `;
+    if (Math.abs(baselineHrDiff) > 10) {
+      const direction = baselineHrDiff > 0 ? 'above' : 'below';
+      trendAnalysis += `Heart rate is ${Math.abs(baselineHrDiff)} bpm ${direction} your personal baseline. `;
     }
   }
   
@@ -80,6 +90,12 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   const adaptiveTempThreshold = profile.adaptiveThresholds?.temperature || 100.4;
   const adaptiveHRThreshold = profile.adaptiveThresholds?.heartRate || 100;
   
+  // Check for exercise pattern to avoid false positives
+  const isLikelyExercise = detectExercisePattern(hr, profile.historicalData.slice(0, 3));
+  if (isLikelyExercise && userInputs.activityLevel !== 'Exercising') {
+    flaggedRisks.push("It looks like your vitals suggest physical activity. If you were exercising, this reduces concern.");
+  }
+  
   // Temperature analysis with adaptive thresholding
   if (temp > adaptiveTempThreshold) {
     riskScore += 2;
@@ -87,7 +103,7 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   }
   
   // Heart rate analysis (adjusted for subjective feedback and adaptive thresholds)
-  if (hr > adaptiveHRThreshold && userInputs.activityLevel === 'Resting') {
+  if (hr > adaptiveHRThreshold && userInputs.activityLevel === 'Resting' && !isLikelyExercise) {
     let hrRisk = 2;
     
     // Adjust based on subjective feedback
@@ -114,7 +130,7 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
     }
   }
   
-  // Symptom analysis
+  // Symptom analysis with cluster detection
   const concerningSymptoms = ['confusion', 'chills', 'breathing', 'wound', 'fatigue'];
   const symptomCount = concerningSymptoms.filter(symptom => 
     userInputs.symptoms.toLowerCase().includes(symptom)
@@ -123,6 +139,14 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   if (symptomCount > 0) {
     riskScore += symptomCount;
     flaggedRisks.push(`Sepsis-related symptoms detected: ${userInputs.symptoms}`);
+    
+    // Check for dangerous combinations
+    if (userInputs.symptoms.toLowerCase().includes('chills') && 
+        hr > 100 && 
+        userInputs.symptoms.toLowerCase().includes('wound')) {
+      riskScore += 2;
+      flaggedRisks.push('High-concern symptom combination: chills + elevated HR + wound pain');
+    }
   }
   
   // Duration analysis
@@ -143,6 +167,17 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   
   // Trend analysis
   const trendAnalysis = performTrendAnalysis(temp, hr, profile);
+  
+  // Conversational memory analysis
+  const conversationalMemory = analyzeConversationalMemory(profile, userInputs);
+  
+  // Time of day insights
+  const timeInsights = getTimeOfDayInsights(profile, new Date(), hr);
+  const personalizedInsights: string[] = [];
+  if (timeInsights) personalizedInsights.push(timeInsights);
+  
+  // Missed check-in analysis
+  const missedCheckinAlert = checkMissedCheckins(profile);
   
   // Get enhanced insights
   const adaptiveThresholdSuggestion = analyzeAdaptiveThresholds(profile, hr, temp, userInputs.subjectiveFeedback);
@@ -190,6 +225,9 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
     adaptiveThresholdSuggestion,
     infectionTimelineEstimate,
     nightModeMessage,
-    providerIntegrationSuggestion
+    providerIntegrationSuggestion,
+    conversationalMemory,
+    missedCheckinAlert,
+    personalizedInsights
   };
 };

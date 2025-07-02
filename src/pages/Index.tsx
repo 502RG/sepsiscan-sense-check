@@ -207,6 +207,15 @@ const Index = () => {
     const assessment = performRiskAnalysis(userInputs, selectedProfile);
     setRiskAssessment(assessment);
     
+    // Determine time of day
+    const now = new Date();
+    const hour = now.getHours();
+    let timeOfDay: 'morning' | 'afternoon' | 'evening' | 'night';
+    if (hour >= 6 && hour < 12) timeOfDay = 'morning';
+    else if (hour >= 12 && hour < 18) timeOfDay = 'afternoon';
+    else if (hour >= 18 && hour < 22) timeOfDay = 'evening';
+    else timeOfDay = 'night';
+    
     // Save this check-in to the profile's historical data
     const newHistoricalEntry = {
       date: new Date().toLocaleDateString(),
@@ -216,11 +225,24 @@ const Index = () => {
       riskLevel: assessment.level,
       timestamp: Date.now(),
       subjectiveFeedback: userInputs.subjectiveFeedback,
+      isExercising: userInputs.activityLevel === 'Exercising',
+      timeOfDay,
+    };
+    
+    // Update personal patterns
+    const updatedPersonalPatterns = {
+      ...selectedProfile.personalPatterns,
+      lastCheckinTime: new Date().toISOString(),
+      symptomLanguage: [
+        ...(selectedProfile.personalPatterns?.symptomLanguage || []),
+        userInputs.subjectiveFeedback || ''
+      ].slice(-10), // Keep last 10
     };
     
     const updatedProfile = {
       ...selectedProfile,
       historicalData: [newHistoricalEntry, ...selectedProfile.historicalData],
+      personalPatterns: updatedPersonalPatterns,
     };
     
     const updatedProfiles = profiles.map(p => 
@@ -236,6 +258,14 @@ const Index = () => {
         title: "🚨 SepsiScan Alert",
         description: "Your recent check-in indicates a potential increase in risk. Please monitor closely or consult a healthcare provider.",
         variant: "destructive"
+      });
+    }
+    
+    // Show missed check-in alert if applicable
+    if (assessment.missedCheckinAlert) {
+      toast({
+        title: "Check-in Reminder",
+        description: assessment.missedCheckinAlert,
       });
     }
     
@@ -634,6 +664,48 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
             onContactProvider={handleContactProvider}
             onEnableLocation={handleEnableLocation}
           />
+
+          {/* Conversational Memory Insights */}
+          {riskAssessment.conversationalMemory && riskAssessment.conversationalMemory.length > 0 && (
+            <Card className="shadow-xl border-0 bg-blue-50/50 backdrop-blur">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-900">
+                  <TrendingUp className="w-5 h-5" />
+                  Pattern Recognition
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {riskAssessment.conversationalMemory.map((insight, index) => (
+                    <p key={index} className="text-blue-800 bg-blue-100 p-3 rounded-lg">
+                      💡 {insight}
+                    </p>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Personalized Insights */}
+          {riskAssessment.personalizedInsights && riskAssessment.personalizedInsights.length > 0 && (
+            <Card className="shadow-xl border-0 bg-green-50/50 backdrop-blur">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-green-900">
+                  <User className="w-5 h-5" />
+                  Personal Insights
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {riskAssessment.personalizedInsights.map((insight, index) => (
+                    <p key={index} className="text-green-800 bg-green-100 p-3 rounded-lg">
+                      🎯 {insight}
+                    </p>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Health Tracking Summary */}
           <HealthTrackingSummary

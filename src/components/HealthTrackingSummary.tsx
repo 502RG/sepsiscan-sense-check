@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,9 +17,10 @@ const HealthTrackingSummary: React.FC<HealthTrackingSummaryProps> = ({
   profile,
   currentData,
 }) => {
-  const getLatestEntry = (): HistoricalData | null => {
-    if (profile.historicalData.length === 0) return null;
-    return profile.historicalData[0]; // Assuming sorted by date descending
+  const getComparisonEntry = (): HistoricalData | null => {
+    // Get the second most recent entry for proper comparison
+    if (profile.historicalData.length < 2) return null;
+    return profile.historicalData[1];
   };
 
   const getTrendIcon = (current: number, previous: number) => {
@@ -46,7 +46,7 @@ const HealthTrackingSummary: React.FC<HealthTrackingSummaryProps> = ({
     }
   };
 
-  const latestEntry = getLatestEntry();
+  const comparisonEntry = getComparisonEntry();
 
   return (
     <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
@@ -84,11 +84,11 @@ const HealthTrackingSummary: React.FC<HealthTrackingSummaryProps> = ({
           </div>
         )}
 
-        {latestEntry && (
+        {comparisonEntry && (
           <div className="bg-blue-50 p-4 rounded-lg">
             <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              Trends from Last Check-in ({latestEntry.date})
+              Trends from Previous Check-in ({comparisonEntry.date})
             </h4>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -98,9 +98,9 @@ const HealthTrackingSummary: React.FC<HealthTrackingSummaryProps> = ({
                   Temperature:
                 </span>
                 <div className="flex items-center gap-2">
-                  {getTrendIcon(currentData.temperature, latestEntry.temperature)}
+                  {getTrendIcon(currentData.temperature, comparisonEntry.temperature)}
                   <span className="text-blue-800">
-                    {getTrendText(currentData.temperature, latestEntry.temperature, "°F")}
+                    {getTrendText(currentData.temperature, comparisonEntry.temperature, "°F")}
                   </span>
                 </div>
               </div>
@@ -111,9 +111,9 @@ const HealthTrackingSummary: React.FC<HealthTrackingSummaryProps> = ({
                   Heart Rate:
                 </span>
                 <div className="flex items-center gap-2">
-                  {getTrendIcon(currentData.heartRate, latestEntry.heartRate)}
+                  {getTrendIcon(currentData.heartRate, comparisonEntry.heartRate)}
                   <span className="text-blue-800">
-                    {getTrendText(currentData.heartRate, latestEntry.heartRate, " bpm")}
+                    {getTrendText(currentData.heartRate, comparisonEntry.heartRate, " bpm")}
                   </span>
                 </div>
               </div>

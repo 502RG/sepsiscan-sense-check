@@ -29,6 +29,9 @@ export interface RiskAssessment {
   infectionTimelineEstimate?: string;
   nightModeMessage?: string;
   providerIntegrationSuggestion?: string;
+  conversationalMemory?: string[];
+  missedCheckinAlert?: string;
+  personalizedInsights?: string[];
 }
 
 export interface HistoricalData {
@@ -39,6 +42,8 @@ export interface HistoricalData {
   riskLevel: string;
   timestamp: number;
   subjectiveFeedback?: string;
+  isExercising?: boolean;
+  timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
 }
 
 export interface UserProfile {
@@ -56,6 +61,18 @@ export interface UserProfile {
     lastUpdated: string;
   };
   locationEnabled?: boolean;
+  personalPatterns?: {
+    symptomLanguage: string[];
+    timeOfDayPatterns: {
+      morning: { avgHR: number; avgTemp: number };
+      afternoon: { avgHR: number; avgTemp: number };
+      evening: { avgHR: number; avgTemp: number };
+      night: { avgHR: number; avgTemp: number };
+    };
+    dangerousSymptomCombos: string[][];
+    lastCheckinTime?: string;
+    missedCheckinCount?: number;
+  };
 }
 
 export interface GeolocationAlert {
