@@ -1,4 +1,3 @@
-
 export interface BaselineVitals {
   temperature: number;
   heartRate: number;
@@ -44,6 +43,11 @@ export interface HistoricalData {
   subjectiveFeedback?: string;
   isExercising?: boolean;
   timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
+  sleepHours?: number;
+  recoveryScore?: number;
+  woundStatus?: string;
+  mealLogged?: boolean;
+  waterIntake?: number;
 }
 
 export interface UserProfile {
@@ -73,6 +77,36 @@ export interface UserProfile {
     lastCheckinTime?: string;
     missedCheckinCount?: number;
   };
+  deviceMonitoring?: {
+    isActive: boolean;
+    lastActivity: string;
+    wearableConnected: boolean;
+    batteryLevel?: number;
+    inactivityCount: number;
+  };
+  privacySettings?: {
+    zeroKnowledgeMode: boolean;
+    autoDeleteDays: number;
+    cloudBackupEnabled: boolean;
+    hipaaCompliant: boolean;
+  };
+  recoveryMode?: {
+    isEnabled: boolean;
+    startDate: string;
+    baselineEstablished: boolean;
+    recoveryBaseline?: BaselineVitals;
+    checkInFrequency: 'daily' | 'twice-daily' | '2-3x-week';
+    lastRecoveryScore?: number;
+    caregiverNotifications: boolean;
+    caregiverContact?: string;
+  };
+  caregiverContacts?: {
+    name: string;
+    relationship: string;
+    phone: string;
+    email: string;
+    notifyAfterHours: number;
+  }[];
 }
 
 export interface GeolocationAlert {
@@ -80,4 +114,27 @@ export interface GeolocationAlert {
   message: string;
   severity: 'info' | 'warning' | 'urgent';
   location: string;
+}
+
+export interface DeviceStatus {
+  isOnline: boolean;
+  batteryLevel?: number;
+  lastSync: string;
+  wearableConnected: boolean;
+  tamperDetected: boolean;
+}
+
+export interface RecoveryInsight {
+  type: 'sleep' | 'symptom' | 'behavior' | 'reinfection' | 'improvement';
+  message: string;
+  severity: 'info' | 'warning' | 'urgent';
+  actionRequired: boolean;
+  timestamp: string;
+}
+
+export interface PrivacyMode {
+  enabled: boolean;
+  encryptionLevel: 'device-only' | 'end-to-end';
+  dataRetentionDays: number;
+  complianceFlags: ('HIPAA' | 'GDPR')[];
 }
