@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, Heart, Thermometer, Clock, Shield, User, UserCheck, TrendingUp, Download, Bell } from "lucide-react";
+import { AlertTriangle, Heart, Thermometer, Clock, Shield, User, UserCheck, TrendingUp, Download, Bell, Settings } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { UserInputs, RiskAssessment, UserProfile } from "@/types/sepsis";
 import { performRiskAnalysis } from "@/utils/riskAnalysis";
@@ -17,9 +17,10 @@ import ProfileManagement from "@/components/ProfileManagement";
 import HealthTrackingSummary from "@/components/HealthTrackingSummary";
 import NavigationControls from "@/components/NavigationControls";
 import EnhancedInsights from "@/components/EnhancedInsights";
+import SettingsPage from "@/components/SettingsPage";
 
 const Index = () => {
-  const [step, setStep] = useState<'profile' | 'greeting' | 'assessment' | 'subjective' | 'results'>('profile');
+  const [step, setStep] = useState<'profile' | 'greeting' | 'assessment' | 'subjective' | 'results' | 'settings'>('profile');
   const [previousStep, setPreviousStep] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -34,6 +35,7 @@ const Index = () => {
   });
   const [riskAssessment, setRiskAssessment] = useState<RiskAssessment | null>(null);
   const [offlineMode, setOfflineMode] = useState(false);
+  const [settingsView, setSettingsView] = useState<'main' | 'privacy' | 'recovery'>('main');
 
   // Load profiles from localStorage on component mount
   useEffect(() => {
@@ -79,6 +81,10 @@ const Index = () => {
         break;
       case 'results':
         setStep(previousStep as any || 'assessment');
+        break;
+      case 'settings':
+        setStep('greeting');
+        setSettingsView('main');
         break;
       default:
         break;
@@ -127,6 +133,14 @@ const Index = () => {
       description: `Profile for ${profileToDelete?.name} has been permanently deleted.`,
       variant: "destructive"
     });
+  };
+
+  const handleUpdateProfile = (updatedProfile: UserProfile) => {
+    const updatedProfiles = profiles.map(p => 
+      p.id === updatedProfile.id ? updatedProfile : p
+    );
+    setProfiles(updatedProfiles);
+    setSelectedProfile(updatedProfile);
   };
 
   const handleUpdateThreshold = () => {
@@ -418,6 +432,18 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     );
   }
 
+  if (step === 'settings') {
+    return (
+      <SettingsPage
+        profile={selectedProfile!}
+        onBack={handleBack}
+        onUpdateProfile={handleUpdateProfile}
+        view={settingsView}
+        onViewChange={setSettingsView}
+      />
+    );
+  }
+
   if (step === 'greeting') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
@@ -438,13 +464,23 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
               Ready for your health check-in? This takes less than 1 minute.
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <Button 
               onClick={startAssessment}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-medium"
             >
               Start Health Assessment
             </Button>
+            
+            <Button 
+              onClick={() => navigateToStep('settings')}
+              variant="outline"
+              className="w-full py-3 text-lg font-medium flex items-center gap-2"
+            >
+              <Settings className="w-5 h-5" />
+              Settings & Privacy
+            </Button>
+            
             <p className="text-xs text-gray-500 text-center mt-4">
               Your information is secure and confidential. At any time, you can use the 🔙 back button to review or change your previous answers.
             </p>
