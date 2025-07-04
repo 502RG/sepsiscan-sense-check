@@ -543,6 +543,31 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
                 />
               </div>
 
+              {/* Additional Vitals */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-semibold text-blue-900 mb-3">Additional Vitals (Optional but Recommended)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Blood Oxygen (SpO₂) %</Label>
+                    <Input
+                      type="number"
+                      placeholder="98"
+                      value={userInputs.spO2 || ''}
+                      onChange={(e) => setUserInputs({...userInputs, spO2: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Blood Pressure (Systolic)</Label>
+                    <Input
+                      type="number"
+                      placeholder="120"
+                      value={userInputs.systolicBP || ''}
+                      onChange={(e) => setUserInputs({...userInputs, systolicBP: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Activity Level */}
               <div className="space-y-2">
                 <Label>Current Activity Level</Label>
@@ -697,6 +722,72 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
             showBack={true}
             currentStep="4"
           />
+
+          {/* Emergency Bypass Alert */}
+          {riskAssessment.emergencyBypassTriggered && (
+            <Card className="border-l-4 border-red-600 bg-red-100 shadow-lg">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-8 h-8 text-red-600" />
+                  <div>
+                    <h2 className="text-xl font-bold text-red-900">🚨 EMERGENCY ALERT TRIGGERED</h2>
+                    <p className="text-red-800 font-semibold mt-2">
+                      Multiple low vitals and serious symptoms detected. No user response received. 
+                      Initiating emergency assistance protocol.
+                    </p>
+                    <p className="text-red-700 mt-2 text-sm">
+                      If this is an error, please respond immediately. Otherwise, emergency services are being contacted.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Critical Low Vital Alert */}
+          {riskAssessment.criticalLowVitalAlert && !riskAssessment.emergencyBypassTriggered && (
+            <Card className="border-l-4 border-red-500 bg-red-50 shadow-lg">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-6 h-6 text-red-600" />
+                  <h3 className="font-bold text-red-900">⚠️ Critical Low Vital Flag</h3>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {riskAssessment.lowVitalFlags?.map((flag, index) => (
+                    <p key={index} className="text-red-800 bg-red-100 p-3 rounded-lg text-sm">
+                      🔴 {flag}
+                    </p>
+                  ))}
+                </div>
+                <div className="mt-4 p-3 bg-red-200 rounded-lg">
+                  <p className="text-red-900 font-semibold">
+                    Your vital signs appear lower than healthy ranges. Low values like this, especially when paired with symptoms, 
+                    can indicate serious health deterioration such as late-stage sepsis, cardiac complications, or medication side effects. 
+                    Based on this, I'm escalating your risk level. Please contact your provider immediately or seek urgent care.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Individual Low Vital Flags */}
+          {riskAssessment.lowVitalFlags && riskAssessment.lowVitalFlags.length > 0 && !riskAssessment.criticalLowVitalAlert && (
+            <Card className="border-l-4 border-yellow-500 bg-yellow-50">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                  <h3 className="font-semibold text-yellow-900">Low Vital Signs Detected</h3>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {riskAssessment.lowVitalFlags.map((flag, index) => (
+                    <p key={index} className="text-yellow-800 text-sm">
+                      ⚠️ {flag}
+                    </p>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Enhanced Insights Component */}
           <EnhancedInsights

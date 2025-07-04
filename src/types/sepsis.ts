@@ -13,6 +13,9 @@ export interface UserInputs {
   medications: string;
   userMode: string;
   subjectiveFeedback?: string;
+  spO2?: string;
+  systolicBP?: string;
+  respiratoryRate?: string;
 }
 
 export interface RiskAssessment {
@@ -31,6 +34,9 @@ export interface RiskAssessment {
   conversationalMemory?: string[];
   missedCheckinAlert?: string;
   personalizedInsights?: string[];
+  lowVitalFlags?: string[];
+  criticalLowVitalAlert?: boolean;
+  emergencyBypassTriggered?: boolean;
 }
 
 export interface HistoricalData {
@@ -107,6 +113,12 @@ export interface UserProfile {
     email: string;
     notifyAfterHours: number;
   }[];
+  emergencySettings?: {
+    autoAlertBypassEnabled: boolean;
+    emergencyContact?: string;
+    lastResponseTime?: string;
+    consecutiveMissedCheckins: number;
+  };
 }
 
 export interface GeolocationAlert {

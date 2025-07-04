@@ -11,6 +11,11 @@ import {
   detectExercisePattern,
   getTimeOfDayInsights
 } from "./conversationalMemory";
+import { 
+  detectLowVitals, 
+  checkEmergencyBypass, 
+  getLowVitalRiskEscalation 
+} from "./lowVitalDetection";
 
 export const analyzeSymptomClusters = (symptoms: string, temp: number, hr: number, userInputs: UserInputs) => {
   const patterns = [];
@@ -85,6 +90,18 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   
   let riskScore = 0;
   let flaggedRisks: string[] = [];
+  
+  // Low vital detection - PRIORITY CHECK
+  const lowVitalDetection = detectLowVitals(userInputs, profile);
+  const hasSymptoms = userInputs.symptoms.length > 0;
+  const lowVitalEscalation = getLowVitalRiskEscalation(lowVitalDetection.lowVitalCount, hasSymptoms);
+  
+  // Add low vital flags to risk assessment
+  flaggedRisks.push(...lowVitalDetection.lowVitalFlags);
+  riskScore += lowVitalEscalation.riskIncrease;
+  
+  // Check for emergency bypass
+  const emergencyBypassTriggered = checkEmergencyBypass(userInputs, profile, lowVitalDetection.lowVitalCount);
   
   // Apply adaptive thresholds if available
   const adaptiveTempThreshold = profile.adaptiveThresholds?.temperature || 100.4;
@@ -190,7 +207,20 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   let recommendation: string;
   let alertLevel: 'None' | 'Monitor' | 'Urgent' = 'None';
   
-  if (riskScore >= 6) {
+  // LOW VITALS OVERRIDE LOGIC
+  if (lowVitalDetection.lowVitalCount >= 2 || emergencyBypassTriggered) {
+    level = 'High';
+    confidence = 'High';
+    recommendation = emergencyBypassTriggered 
+      ? 'EMERGENCY: Multiple critical low vitals detected. Initiating emergency assistance protocol. Call 911 immediately.'
+      : 'URGENT: Multiple dangerously low vital signs detected. Call 911 or go to emergency room immediately.';
+    alertLevel = 'Urgent';
+  } else if (lowVitalDetection.lowVitalCount === 1) {
+    level = riskScore >= 4 ? 'High' : 'Moderate';
+    confidence = 'High';
+    recommendation = 'Critically low vital signs detected. Seek urgent medical care immediately.';
+    alertLevel = 'Urgent';
+  } else if (riskScore >= 6) {
     level = 'High';
     confidence = 'High';
     recommendation = 'Seek urgent care immediately';
@@ -218,7 +248,9 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
     confidence,
     flaggedRisks,
     recommendation,
-    reassurance: "Remember, this is an early warning tool, not a diagnosis. If you feel okay, keep monitoring and follow up as advised.",
+    reassurance: lowVitalDetection.isCritical 
+      ? "CRITICAL: This assessment indicates potentially life-threatening vital signs. Seek immediate emergency care."
+      : "Remember, this is an early warning tool, not a diagnosis. If you feel okay, keep monitoring and follow up as advised.",
     patternAnalysis,
     trendAnalysis,
     alertLevel,
@@ -228,6 +260,9 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
     providerIntegrationSuggestion,
     conversationalMemory,
     missedCheckinAlert,
-    personalizedInsights
+    personalizedInsights,
+    lowVitalFlags: lowVitalDetection.lowVitalFlags,
+    criticalLowVitalAlert: lowVitalDetection.isCritical,
+    emergencyBypassTriggered
   };
 };
