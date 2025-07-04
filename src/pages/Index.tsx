@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Shield, Activity, Users, Settings, ArrowLeft } from "lucide-react";
+import { Shield, Activity, Users, Settings } from "lucide-react";
 import { UserInputs, UserProfile, HistoricalData } from "@/types/sepsis";
 import { performRiskAnalysis } from "@/utils/riskAnalysis";
 import ProfileManagement from "@/components/ProfileManagement";
 import SettingsPage from "@/components/SettingsPage";
+import SepsisAssessment from "@/components/SepsisAssessment";
 
 const Index = () => {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -123,17 +123,11 @@ const Index = () => {
             <ArrowLeft className="w-4 h-4" />
             Back to Profile Select
           </Button>
-          <Card>
-            <CardHeader>
-              <CardTitle>Assessment for {selectedProfile?.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p>Sepsis assessment component will be implemented here.</p>
-              <Button onClick={() => setView('settings')}>
-                Settings
-              </Button>
-            </CardContent>
-          </Card>
+          <SepsisAssessment
+            profile={selectedProfile!}
+            onProfileUpdate={handleProfileUpdate}
+            onSettingsClick={() => setView('settings')}
+          />
         </div>
       </div>
     );

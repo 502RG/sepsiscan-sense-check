@@ -1,4 +1,5 @@
-import { UserInputs, UserProfile, RiskAssessment, HistoricalData } from "@/types/sepsis";
+
+import { UserInputs, UserProfile, RiskAssessment } from "@/types/sepsis";
 
 export interface HealthRecommendation {
   id: string;
