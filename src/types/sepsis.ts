@@ -31,13 +31,6 @@ export interface RiskAssessment {
   conversationalMemory?: string[];
   missedCheckinAlert?: string;
   personalizedInsights?: string[];
-  healthRecommendations?: {
-    id: string;
-    message: string;
-    category: 'hydration' | 'rest' | 'wound-care' | 'breathing' | 'medication' | 'monitoring';
-    isPersonalized: boolean;
-    basedOnSymptoms: string[];
-  }[];
 }
 
 export interface HistoricalData {
