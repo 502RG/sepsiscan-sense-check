@@ -11,6 +11,11 @@ import {
   detectExercisePattern,
   getTimeOfDayInsights
 } from "./conversationalMemory";
+import { 
+  generateHealthRecommendations,
+  shouldSuppressRecommendations,
+  HealthRecommendation
+} from "./healthRecommendations";
 
 export const analyzeSymptomClusters = (symptoms: string, temp: number, hr: number, userInputs: UserInputs) => {
   const patterns = [];
@@ -213,6 +218,25 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
   
   const providerIntegrationSuggestion = getProviderIntegrationSuggestion(level, alertLevel);
   
+  // Generate health recommendations
+  const healthRecommendations = shouldSuppressRecommendations(userInputs, {
+    level,
+    confidence,
+    flaggedRisks,
+    recommendation,
+    reassurance: "",
+    patternAnalysis: [],
+    alertLevel
+  } as RiskAssessment) ? [] : generateHealthRecommendations(userInputs, profile, {
+    level,
+    confidence,
+    flaggedRisks,
+    recommendation,
+    reassurance: "",
+    patternAnalysis: [],
+    alertLevel
+  } as RiskAssessment);
+  
   return {
     level,
     confidence,
@@ -228,6 +252,7 @@ export const performRiskAnalysis = (userInputs: UserInputs, profile: UserProfile
     providerIntegrationSuggestion,
     conversationalMemory,
     missedCheckinAlert,
-    personalizedInsights
+    personalizedInsights,
+    healthRecommendations
   };
 };
