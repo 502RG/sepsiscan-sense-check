@@ -141,6 +141,11 @@ const Index = () => {
     );
     setProfiles(updatedProfiles);
     setSelectedProfile(updatedProfile);
+    
+    toast({
+      title: "Profile Updated",
+      description: `Profile for ${updatedProfile.name} has been updated successfully.`,
+    });
   };
 
   const handleUpdateThreshold = () => {
@@ -427,6 +432,7 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
           onProfileSelect={handleProfileSelect}
           onProfileCreate={handleProfileCreate}
           onProfileDelete={handleProfileDelete}
+          onProfileUpdate={handleUpdateProfile}
         />
       </div>
     );

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,7 @@ interface ProfileManagementProps {
   onProfileSelect: (profile: UserProfile) => void;
   onProfileCreate: (profile: Omit<UserProfile, 'id' | 'historicalData' | 'createdAt'>) => void;
   onProfileDelete: (profileId: string) => void;
-  onProfileUpdate?: (profile: UserProfile) => void;
+  onProfileUpdate: (profile: UserProfile) => void;
 }
 
 const ProfileManagement: React.FC<ProfileManagementProps> = ({
@@ -93,7 +92,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
   };
 
   const handleUpdateProfile = () => {
-    if (!editingProfile || !onProfileUpdate) return;
+    if (!editingProfile) return;
 
     const conditions = newProfile.conditionsText
       .split(',')
