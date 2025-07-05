@@ -54,6 +54,53 @@ export interface HistoricalData {
   woundStatus?: string;
   mealLogged?: boolean;
   waterIntake?: number;
+  // Recovery Coach specific fields
+  overallFeeling?: 'Great' | 'Okay' | 'Off' | 'Sick';
+  recoverySymptoms?: string[];
+  medicationCompliance?: boolean;
+  hydrationCompliance?: boolean;
+  nutritionCompliance?: boolean;
+  restHours?: number;
+  tookNaps?: boolean;
+  moodRating?: number;
+  woundChecked?: boolean;
+  cognitiveIssues?: boolean;
+}
+
+export interface RecoveryCoachData {
+  lastCheckIn: string;
+  weeklyMilestones: {
+    week: number;
+    goals: string[];
+    completed: string[];
+    nextWeek: string[];
+  }[];
+  redFlagAlerts: {
+    date: string;
+    symptoms: string[];
+    escalated: boolean;
+  }[];
+  medicationReminders: {
+    enabled: boolean;
+    times: string[];
+    medications: string[];
+  };
+  caregiverAlerts: {
+    lastAlert: string;
+    alertType: 'symptoms' | 'medication' | 'mood';
+    resolved: boolean;
+  }[];
+  cognitiveAssessments: {
+    date: string;
+    hasIssues: boolean;
+    details: string;
+  }[];
+  progressTrends: {
+    hydration: number[];
+    nutrition: number[];
+    mood: number[];
+    fatigue: number[];
+  };
 }
 
 export interface UserProfile {
@@ -105,6 +152,11 @@ export interface UserProfile {
     lastRecoveryScore?: number;
     caregiverNotifications: boolean;
     caregiverContact?: string;
+    // Recovery Coach specific fields
+    coachEnabled?: boolean;
+    recoveryWeek?: number;
+    lastCoachCheckIn?: string;
+    recoveryCoachData?: RecoveryCoachData;
   };
   caregiverContacts?: {
     name: string;
@@ -137,7 +189,7 @@ export interface DeviceStatus {
 }
 
 export interface RecoveryInsight {
-  type: 'sleep' | 'symptom' | 'behavior' | 'reinfection' | 'improvement';
+  type: 'sleep' | 'symptom' | 'behavior' | 'reinfection' | 'improvement' | 'hydration' | 'nutrition' | 'medication' | 'mood' | 'cognitive';
   message: string;
   severity: 'info' | 'warning' | 'urgent';
   actionRequired: boolean;

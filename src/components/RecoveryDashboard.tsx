@@ -3,7 +3,8 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Heart, Moon, TrendingUp, Clock, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Heart, Moon, TrendingUp, Clock, AlertTriangle, UserCheck } from "lucide-react";
 import { UserProfile, RecoveryInsight } from "@/types/sepsis";
 import { 
   calculateRecoveryScore, 
@@ -11,23 +12,42 @@ import {
   getRecoveryScoreColor,
   getRecoveryScoreEmoji 
 } from "@/utils/recoveryMode";
+import { initializeRecoveryCoach } from "@/utils/recoveryCoach";
+import RecoveryCoachDashboard from "./RecoveryCoachDashboard";
 
 interface RecoveryDashboardProps {
   profile: UserProfile;
+  onUpdateProfile: (profile: UserProfile) => void;
 }
 
-const RecoveryDashboard: React.FC<RecoveryDashboardProps> = ({ profile }) => {
+const RecoveryDashboard: React.FC<RecoveryDashboardProps> = ({ profile, onUpdateProfile }) => {
   if (!profile.recoveryMode?.isEnabled) return null;
 
   const recoveryScore = calculateRecoveryScore(profile);
   const insights = generateRecoveryInsights(profile);
-  const recentEntries = profile.historicalData.slice(0, 7);
+
+  const handleEnableCoach = () => {
+    const updatedProfile = {
+      ...profile,
+      recoveryMode: {
+        ...profile.recoveryMode,
+        coachEnabled: true
+      }
+    };
+    const initializedProfile = initializeRecoveryCoach(updatedProfile);
+    onUpdateProfile(initializedProfile);
+  };
 
   const getInsightIcon = (type: RecoveryInsight['type']) => {
     switch (type) {
       case 'sleep': return <Moon className="w-4 h-4" />;
       case 'reinfection': return <AlertTriangle className="w-4 h-4" />;
       case 'behavior': return <Heart className="w-4 h-4" />;
+      case 'hydration': return <Heart className="w-4 h-4" />;
+      case 'nutrition': return <Heart className="w-4 h-4" />;
+      case 'medication': return <Heart className="w-4 h-4" />;
+      case 'mood': return <Heart className="w-4 h-4" />;
+      case 'cognitive': return <AlertTriangle className="w-4 h-4" />;
       default: return <TrendingUp className="w-4 h-4" />;
     }
   };
@@ -42,6 +62,46 @@ const RecoveryDashboard: React.FC<RecoveryDashboardProps> = ({ profile }) => {
 
   return (
     <div className="space-y-6">
+      {/* Recovery Coach Toggle */}
+      {!profile.recoveryMode.coachEnabled && (
+        <Card className="shadow-lg border-0 bg-gradient-to-r from-purple-50 to-pink-50 backdrop-blur">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-purple-600" />
+              Sepsis Recovery Coach Available
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <p className="text-gray-700">
+                Get personalized post-sepsis recovery support with daily check-ins, milestone tracking, 
+                symptom monitoring, and 24/7 guidance from your AI Recovery Coach.
+              </p>
+              <div className="bg-white p-3 rounded-lg">
+                <p className="text-sm text-purple-800">
+                  <strong>Includes:</strong> Daily wellness check-ins • Medication reminders • 
+                  Nutrition guidance • Sleep optimization • Red flag detection • Provider escalation
+                </p>
+              </div>
+              <Button 
+                onClick={handleEnableCoach}
+                className="w-full bg-purple-600 hover:bg-purple-700"
+              >
+                Enable Recovery Coach
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recovery Coach Dashboard */}
+      {profile.recoveryMode.coachEnabled && (
+        <RecoveryCoachDashboard 
+          profile={profile} 
+          onUpdateProfile={onUpdateProfile} 
+        />
+      )}
+
       {/* Recovery Score */}
       <Card className="shadow-lg border-0 bg-white/90 backdrop-blur">
         <CardHeader>
