@@ -72,7 +72,13 @@ const RecoveryCoachDashboard: React.FC<RecoveryCoachDashboardProps> = ({
       return;
     }
 
-    const result = processRecoveryCheckIn(profile, checkInData);
+    // Only call processRecoveryCheckIn if overallFeeling is valid
+    const validCheckInData = {
+      ...checkInData,
+      overallFeeling: checkInData.overallFeeling as 'Great' | 'Okay' | 'Off' | 'Sick'
+    };
+
+    const result = processRecoveryCheckIn(profile, validCheckInData);
     
     onUpdateProfile(result.updatedProfile);
     

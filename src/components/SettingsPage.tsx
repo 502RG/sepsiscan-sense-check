@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,7 +51,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <ArrowLeft className="w-4 h-4" />
             Back to Settings
           </Button>
-          <RecoveryDashboard profile={profile} />
+          <RecoveryDashboard profile={profile} onUpdateProfile={onUpdateProfile} />
         </div>
       </div>
     );
