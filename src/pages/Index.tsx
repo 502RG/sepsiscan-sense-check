@@ -413,6 +413,53 @@ const Index = () => {
     setShowOfflineDataViewer(true);
   };
 
+  const generateExportData = () => {
+    if (!riskAssessment || !selectedProfile) return;
+    
+    const exportData = {
+      profile: selectedProfile.name,
+      date: new Date().toLocaleDateString(),
+      vitals: {
+        temperature: userInputs.temperature,
+        heartRate: userInputs.heartRate,
+        spO2: userInputs.spO2,
+        bloodPressure: userInputs.systolicBP
+      },
+      symptoms: userInputs.symptoms,
+      riskLevel: riskAssessment.level,
+      recommendation: riskAssessment.recommendation,
+      flaggedRisks: riskAssessment.flaggedRisks
+    };
+    
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sepsis-assessment-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Assessment Exported",
+      description: "Your assessment data has been downloaded as a JSON file.",
+    });
+  };
+
+  const resetAssessment = () => {
+    setUserInputs({
+      temperature: '',
+      heartRate: '',
+      symptoms: '',
+      symptomDuration: '',
+      activityLevel: '',
+      medications: '',
+      userMode: 'Self'
+    });
+    setRiskAssessment(null);
+    navigateToStep('assessment');
+  };
+
   const getRiskColor = (level: string) => {
     switch (level) {
       case 'High': return 'destructive';
