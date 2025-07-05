@@ -13,11 +13,25 @@ import { toast } from "@/hooks/use-toast";
 import { UserInputs, RiskAssessment, UserProfile } from "@/types/sepsis";
 import { performRiskAnalysis } from "@/utils/riskAnalysis";
 import { enableNightMode, isOfflineMode } from "@/utils/enhancedRiskAnalysis";
+import { 
+  isOnline, 
+  saveOfflineData, 
+  getOfflineData, 
+  getUnsyncedData, 
+  syncOfflineData, 
+  cleanupOldData,
+  checkEmergencyConditions,
+  triggerEmergencyResponse,
+  getOfflineSettings
+} from "@/utils/offlineManager";
 import ProfileManagement from "@/components/ProfileManagement";
 import HealthTrackingSummary from "@/components/HealthTrackingSummary";
 import NavigationControls from "@/components/NavigationControls";
 import EnhancedInsights from "@/components/EnhancedInsights";
 import SettingsPage from "@/components/SettingsPage";
+import OfflineBanner from "@/components/OfflineBanner";
+import EmergencyConfirmationDialog from "@/components/EmergencyConfirmationDialog";
+import OfflineDataViewer from "@/components/OfflineDataViewer";
 
 const Index = () => {
   const [step, setStep] = useState<'profile' | 'greeting' | 'assessment' | 'subjective' | 'results' | 'settings'>('profile');
@@ -36,6 +50,11 @@ const Index = () => {
   const [riskAssessment, setRiskAssessment] = useState<RiskAssessment | null>(null);
   const [offlineMode, setOfflineMode] = useState(false);
   const [settingsView, setSettingsView] = useState<'main' | 'privacy' | 'recovery'>('main');
+  
+  // Offline-specific state
+  const [showEmergencyDialog, setShowEmergencyDialog] = useState(false);
+  const [showOfflineDataViewer, setShowOfflineDataViewer] = useState(false);
+  const [unsyncedCount, setUnsyncedCount] = useState(0);
 
   // Load profiles from localStorage on component mount
   useEffect(() => {
@@ -48,14 +67,35 @@ const Index = () => {
     enableNightMode();
     
     // Check offline status
-    setOfflineMode(isOfflineMode());
+    const updateOfflineStatus = () => {
+      const isOfflineNow = !isOnline();
+      setOfflineMode(isOfflineNow);
+      
+      if (!isOfflineNow) {
+        // Coming back online - sync data
+        const savedProfiles = localStorage.getItem('sepsiscan-profiles');
+        if (savedProfiles) {
+          const currentProfiles = JSON.parse(savedProfiles);
+          syncOfflineData(currentProfiles, setProfiles);
+        }
+      }
+      
+      // Update unsynced count
+      const unsynced = getUnsyncedData();
+      setUnsyncedCount(unsynced.length);
+    };
+    
+    updateOfflineStatus();
     
     // Listen for online/offline events
-    const handleOnline = () => setOfflineMode(false);
-    const handleOffline = () => setOfflineMode(true);
+    const handleOnline = () => updateOfflineStatus();
+    const handleOffline = () => updateOfflineStatus();
     
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
+    // Cleanup old offline data
+    cleanupOldData();
     
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -226,6 +266,31 @@ const Index = () => {
     const assessment = performRiskAnalysis(userInputs, selectedProfile);
     setRiskAssessment(assessment);
     
+    // Check for emergency conditions if offline
+    if (offlineMode && checkEmergencyConditions(userInputs, assessment)) {
+      const settings = getOfflineSettings();
+      setShowEmergencyDialog(true);
+      
+      // Auto-trigger after timeout
+      setTimeout(() => {
+        if (showEmergencyDialog) {
+          handleEmergencyConfirm();
+        }
+      }, settings.emergencyTimeoutSeconds * 1000);
+      
+      return; // Don't proceed with normal save yet
+    }
+    
+    // Save assessment data
+    saveAssessmentData(assessment);
+  };
+
+  const saveAssessmentData = (assessment: RiskAssessment) => {
+    if (!selectedProfile) return;
+
+    const temp = parseFloat(userInputs.temperature);
+    const hr = parseFloat(userInputs.heartRate);
+    
     // Determine time of day
     const now = new Date();
     const hour = now.getHours();
@@ -246,6 +311,7 @@ const Index = () => {
       subjectiveFeedback: userInputs.subjectiveFeedback,
       isExercising: userInputs.activityLevel === 'Exercising',
       timeOfDay,
+      wasOffline: offlineMode
     };
     
     // Update personal patterns
@@ -271,13 +337,24 @@ const Index = () => {
     setProfiles(updatedProfiles);
     setSelectedProfile(updatedProfile);
     
-    // Show smart alert if high risk
-    if (assessment.alertLevel === 'Urgent') {
+    // If offline, save to offline storage
+    if (offlineMode) {
+      saveOfflineData(userInputs, assessment, selectedProfile.id);
+      setUnsyncedCount(prev => prev + 1);
+      
       toast({
-        title: "🚨 SepsiScan Alert",
-        description: "Your recent check-in indicates a potential increase in risk. Please monitor closely or consult a healthcare provider.",
-        variant: "destructive"
+        title: "Data Saved Offline",
+        description: "Your check-in has been saved locally and will sync when connection is restored.",
       });
+    } else {
+      // Online - show regular alerts
+      if (assessment.alertLevel === 'Urgent') {
+        toast({
+          title: "🚨 SepsiScan Alert",
+          description: "Your recent check-in indicates a potential increase in risk. Please monitor closely or consult a healthcare provider.",
+          variant: "destructive"
+        });
+      }
     }
     
     // Show missed check-in alert if applicable
@@ -289,113 +366,51 @@ const Index = () => {
     }
     
     navigateToStep('results');
+  };
+
+  const handleEmergencyConfirm = async () => {
+    if (!selectedProfile || !riskAssessment) return;
     
-    // Sync data when back online
-    if (!offlineMode && navigator.onLine) {
-      // Here you would sync with backend when available
-      console.log('Syncing data with backend...');
+    setShowEmergencyDialog(false);
+    
+    try {
+      await triggerEmergencyResponse(userInputs, selectedProfile, riskAssessment);
+      
+      toast({
+        title: "🚨 Emergency Response Activated",
+        description: "Emergency services have been contacted. Help is on the way.",
+        variant: "destructive"
+      });
+      
+      // Still save the data
+      saveAssessmentData(riskAssessment);
+      
+    } catch (error) {
+      console.error('Emergency response failed:', error);
+      toast({
+        title: "Emergency Response Error",
+        description: "Failed to contact emergency services. Please call 911 directly.",
+        variant: "destructive"
+      });
     }
   };
 
-  const generateExportData = () => {
-    if (!selectedProfile || !riskAssessment) return;
-
-    const today = new Date().toLocaleDateString();
-    const exportData = {
-      date: today,
-      profile: {
-        name: selectedProfile.name,
-        age: selectedProfile.age,
-        knownConditions: selectedProfile.knownConditions.join(', '),
-        mode: userInputs.userMode,
-        medications: userInputs.medications
-      },
-      vitals: {
-        temperature: `${userInputs.temperature}°F`,
-        heartRate: `${userInputs.heartRate} bpm`,
-        activityLevel: userInputs.activityLevel
-      },
-      symptoms: {
-        description: userInputs.symptoms,
-        duration: userInputs.symptomDuration,
-        subjectiveFeedback: userInputs.subjectiveFeedback
-      },
-      assessment: {
-        riskLevel: riskAssessment.level,
-        confidence: riskAssessment.confidence,
-        recommendation: riskAssessment.recommendation,
-        flaggedRisks: riskAssessment.flaggedRisks,
-        patternAnalysis: riskAssessment.patternAnalysis,
-        trendAnalysis: riskAssessment.trendAnalysis
-      }
-    };
+  const handleEmergencyCancel = () => {
+    setShowEmergencyDialog(false);
     
-    const exportText = `
-SEPSISCAN HEALTH ASSESSMENT REPORT
-Date: ${exportData.date}
-
-PATIENT INFORMATION:
-- Name: ${exportData.profile.name}
-- Age: ${exportData.profile.age}
-- Known Conditions: ${exportData.profile.knownConditions || 'None reported'}
-- Assessment completed by: ${exportData.profile.mode}
-- Current medications: ${exportData.profile.medications || 'None reported'}
-
-VITAL SIGNS:
-- Temperature: ${exportData.vitals.temperature}
-- Heart Rate: ${exportData.vitals.heartRate}
-- Activity Level: ${exportData.vitals.activityLevel}
-
-SYMPTOMS:
-- Description: ${exportData.symptoms.description || 'None reported'}
-- Duration: ${exportData.symptoms.duration}
-- Subjective Feedback: ${exportData.symptoms.subjectiveFeedback || 'Not assessed'}
-
-RISK ASSESSMENT:
-- Risk Level: ${exportData.assessment.riskLevel}
-- Confidence: ${exportData.assessment.confidence}
-- Recommendation: ${exportData.assessment.recommendation}
-
-FLAGGED CONCERNS:
-${exportData.assessment.flaggedRisks?.map(risk => `- ${risk}`).join('\n') || 'None'}
-
-PATTERN ANALYSIS:
-${exportData.assessment.patternAnalysis?.map(pattern => `- ${pattern}`).join('\n') || 'No concerning patterns detected'}
-
-TREND ANALYSIS:
-${exportData.assessment.trendAnalysis || 'No trend data available'}
-
----
-This assessment was generated by SepsiScan AI and is for informational purposes only. 
-It is not a medical diagnosis. Please consult with healthcare professionals for medical advice.
-    `;
-    
-    const blob = new Blob([exportText], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `SepsiScan_Report_${selectedProfile.name}_${today.replace(/\//g, '-')}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Continue with normal save
+    if (riskAssessment) {
+      saveAssessmentData(riskAssessment);
+    }
     
     toast({
-      title: "Report Exported",
-      description: "Your health assessment report has been downloaded successfully."
+      title: "Emergency Alert Cancelled",
+      description: "Your assessment has been saved. Please monitor your symptoms closely.",
     });
   };
 
-  const resetAssessment = () => {
-    navigateToStep('greeting');
-    setUserInputs({
-      temperature: '',
-      heartRate: '',
-      symptoms: '',
-      symptomDuration: '',
-      activityLevel: '',
-      medications: '',
-      userMode: 'Self'
-    });
-    setRiskAssessment(null);
+  const handleViewOfflineData = () => {
+    setShowOfflineDataViewer(true);
   };
 
   const getRiskColor = (level: string) => {
@@ -427,71 +442,92 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
   if (step === 'profile') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
-        <ProfileManagement
-          profiles={profiles}
-          onProfileSelect={handleProfileSelect}
-          onProfileCreate={handleProfileCreate}
-          onProfileDelete={handleProfileDelete}
-          onProfileUpdate={handleUpdateProfile}
-        />
+        <div className="w-full max-w-md">
+          <OfflineBanner 
+            isOffline={offlineMode} 
+            unsyncedCount={unsyncedCount}
+            onViewOfflineData={handleViewOfflineData}
+          />
+          <ProfileManagement
+            profiles={profiles}
+            onProfileSelect={handleProfileSelect}
+            onProfileCreate={handleProfileCreate}
+            onProfileDelete={handleProfileDelete}
+            onProfileUpdate={handleUpdateProfile}
+          />
+        </div>
       </div>
     );
   }
 
   if (step === 'settings') {
     return (
-      <SettingsPage
-        profile={selectedProfile!}
-        onBack={handleBack}
-        onUpdateProfile={handleUpdateProfile}
-        view={settingsView}
-        onViewChange={setSettingsView}
-      />
+      <>
+        <OfflineBanner 
+          isOffline={offlineMode} 
+          unsyncedCount={unsyncedCount}
+          onViewOfflineData={handleViewOfflineData}
+        />
+        <SettingsPage
+          profile={selectedProfile!}
+          onBack={handleBack}
+          onUpdateProfile={handleUpdateProfile}
+          view={settingsView}
+          onViewChange={setSettingsView}
+        />
+      </>
     );
   }
 
   if (step === 'greeting') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-xl border-0 bg-white/80 backdrop-blur">
-          <CardHeader className="text-center pb-6">
-            <NavigationControls 
-              onBack={handleBack}
-              showBack={true}
-              currentStep="1"
-            />
-            <div className="mx-auto w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
-              <Shield className="w-8 h-8 text-white" />
-            </div>
-            <CardTitle className="text-2xl font-bold text-gray-900">
-              Welcome back, {selectedProfile?.name}!
-            </CardTitle>
-            <p className="text-gray-600 mt-2">
-              Ready for your health check-in? This takes less than 1 minute.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button 
-              onClick={startAssessment}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-medium"
-            >
-              Start Health Assessment
-            </Button>
-            
-            <Button 
-              onClick={() => navigateToStep('settings')}
-              variant="outline"
-              className="w-full py-3 text-lg font-medium flex items-center gap-2"
-            >
-              <Settings className="w-5 h-5" />
-              Settings & Privacy
-            </Button>
-            
-            <p className="text-xs text-gray-500 text-center mt-4">
-              Your information is secure and confidential. At any time, you can use the 🔙 back button to review or change your previous answers.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="w-full max-w-md">
+          <OfflineBanner 
+            isOffline={offlineMode} 
+            unsyncedCount={unsyncedCount}
+            onViewOfflineData={handleViewOfflineData}
+          />
+          <Card className="w-full shadow-xl border-0 bg-white/80 backdrop-blur">
+            <CardHeader className="text-center pb-6">
+              <NavigationControls 
+                onBack={handleBack}
+                showBack={true}
+                currentStep="1"
+              />
+              <div className="mx-auto w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
+                <Shield className="w-8 h-8 text-white" />
+              </div>
+              <CardTitle className="text-2xl font-bold text-gray-900">
+                Welcome back, {selectedProfile?.name}!
+              </CardTitle>
+              <p className="text-gray-600 mt-2">
+                Ready for your health check-in? This takes less than 1 minute.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                onClick={startAssessment}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-medium"
+              >
+                Start Health Assessment
+              </Button>
+              
+              <Button 
+                onClick={() => navigateToStep('settings')}
+                variant="outline"
+                className="w-full py-3 text-lg font-medium flex items-center gap-2"
+              >
+                <Settings className="w-5 h-5" />
+                Settings & Privacy
+              </Button>
+              
+              <p className="text-xs text-gray-500 text-center mt-4">
+                Your information is secure and confidential. At any time, you can use the 🔙 back button to review or change your previous answers.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -500,6 +536,11 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white p-4">
         <div className="max-w-2xl mx-auto">
+          <OfflineBanner 
+            isOffline={offlineMode} 
+            unsyncedCount={unsyncedCount}
+            onViewOfflineData={handleViewOfflineData}
+          />
           <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
             <CardHeader>
               <NavigationControls 
@@ -510,6 +551,9 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
               <CardTitle className="flex items-center gap-2">
                 <Heart className="w-5 h-5 text-red-500" />
                 Health Assessment
+                {offlineMode && (
+                  <Badge variant="secondary" className="ml-2">Offline</Badge>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -645,7 +689,7 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3"
                 disabled={!userInputs.temperature || !userInputs.heartRate || !userInputs.activityLevel}
               >
-                Analyze Risk
+                {offlineMode ? 'Analyze Risk (Offline)' : 'Analyze Risk'}
               </Button>
             </CardContent>
           </Card>
@@ -661,6 +705,11 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     return (
       <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-white p-4">
         <div className="max-w-2xl mx-auto">
+          <OfflineBanner 
+            isOffline={offlineMode} 
+            unsyncedCount={unsyncedCount}
+            onViewOfflineData={handleViewOfflineData}
+          />
           <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
             <CardHeader>
               <NavigationControls 
@@ -717,10 +766,10 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white p-4">
         <div className="max-w-3xl mx-auto space-y-6">
-          <NavigationControls 
-            onBack={handleBack}
-            showBack={true}
-            currentStep="4"
+          <OfflineBanner 
+            isOffline={offlineMode} 
+            unsyncedCount={unsyncedCount}
+            onViewOfflineData={handleViewOfflineData}
           />
 
           {/* Emergency Bypass Alert */}
@@ -1018,7 +1067,23 @@ It is not a medical diagnosis. Please consult with healthcare professionals for 
     );
   }
 
-  return null;
+  return (
+    <>
+      <EmergencyConfirmationDialog
+        isOpen={showEmergencyDialog}
+        onConfirm={handleEmergencyConfirm}
+        onCancel={handleEmergencyCancel}
+        timeoutSeconds={getOfflineSettings().emergencyTimeoutSeconds}
+      />
+      
+      {showOfflineDataViewer && (
+        <OfflineDataViewer
+          offlineData={getOfflineData()}
+          onClose={() => setShowOfflineDataViewer(false)}
+        />
+      )}
+    </>
+  );
 };
 
 export default Index;
