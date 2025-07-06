@@ -5,14 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { MessageCircle, Heart, CheckCircle, AlertTriangle, Calendar, TrendingUp } from "lucide-react";
+import { MessageCircle, Heart, CheckCircle, AlertTriangle, Calendar, TrendingUp, Flag } from "lucide-react";
 import { UserProfile } from "@/types/sepsis";
 import { 
   generateConversationalGreeting,
   generateFollowUpQuestion,
   generateTrendFeedback,
   shouldOfferQuickCheckIn,
-  calculateRecoveryWeek
+  calculateRecoveryWeek,
+  generateRiskAwareResponse,
+  generateAdaptiveQuestions,
+  detectRedFlags
 } from "@/utils/recoveryProgressTracker";
 import { toast } from "@/hooks/use-toast";
 
@@ -22,8 +25,8 @@ interface ConversationalCheckInProps {
   onClose: () => void;
 }
 
-type CheckInStep = 'greeting' | 'quick-response' | 'symptom-chat' | 'follow-up' | 'summary';
-type ResponseType = 'all-good' | 'need-update' | 'concerning';
+type CheckInStep = 'greeting' | 'quick-response' | 'adaptive-chat' | 'follow-up' | 'red-flag-alert';
+type ResponseType = 'all-good' | 'need-update' | 'not-feeling-great';
 
 const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({ 
   profile, 
@@ -32,21 +35,9 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
 }) => {
   const [currentStep, setCurrentStep] = useState<CheckInStep>('greeting');
   const [daysSinceDischarge, setDaysSinceDischarge] = useState(7);
-  const [userResponses, setUserResponses] = useState<{
-    overallFeeling: string;
-    specificSymptoms: string;
-    sleepQuality: string;
-    hydrationStatus: string;
-    medicationCompliance: string;
-    customNotes: string;
-  }>({
-    overallFeeling: '',
-    specificSymptoms: '',
-    sleepQuality: '',
-    hydrationStatus: '',
-    medicationCompliance: '',
-    customNotes: ''
-  });
+  const [currentResponse, setCurrentResponse] = useState('');
+  const [redFlags, setRedFlags] = useState<string[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<string[]>([]);
 
   const conversationalGreeting = generateConversationalGreeting(profile);
   const followUpQuestion = generateFollowUpQuestion(profile);
@@ -54,15 +45,18 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
   const canUseQuickCheckIn = shouldOfferQuickCheckIn(profile);
   const recoveryWeek = calculateRecoveryWeek(daysSinceDischarge);
   const progressPercentage = Math.min((recoveryWeek / 6) * 100, 100);
+  const adaptiveQuestions = generateAdaptiveQuestions(profile);
 
   const handleQuickResponse = (response: ResponseType) => {
     if (response === 'all-good') {
-      // Process quick "all good" response
+      // Process quick "all good" response with risk-aware language
+      const riskAwareMessage = generateRiskAwareResponse('stable', profile);
+      
       const updatedProfile = {
         ...profile,
         recoveryMode: {
           ...profile.recoveryMode,
-          lastRecoveryScore: 80,
+          lastRecoveryScore: 85,
           recoveryWeek
         }
       };
@@ -71,57 +65,48 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
       
       toast({
         title: "Thanks for checking in! 💚",
-        description: "Your progress looks great. Keep up the excellent work with your recovery routine!",
+        description: riskAwareMessage,
       });
       
       onClose();
     } else if (response === 'need-update') {
-      setCurrentStep('symptom-chat');
-    } else {
+      setCurrentStep('adaptive-chat');
+    } else if (response === 'not-feeling-great') {
       setCurrentStep('follow-up');
+      setConversationHistory(['User indicated not feeling great']);
     }
   };
 
-  const handleSymptomUpdate = (symptomType: string, value: string) => {
-    setUserResponses(prev => ({
-      ...prev,
-      [symptomType]: value
-    }));
-  };
-
-  const generatePersonalizedResponse = (responses: typeof userResponses): string => {
-    const responses_array = [];
+  const handleAdaptiveResponse = (response: string) => {
+    setCurrentResponse(response);
+    setConversationHistory(prev => [...prev, response]);
     
-    if (responses.overallFeeling.includes('better') || responses.overallFeeling.includes('good')) {
-      responses_array.push("It's wonderful to hear you're feeling better!");
+    // Check for red flags
+    const detectedRedFlags = detectRedFlags(response);
+    if (detectedRedFlags.length > 0) {
+      setRedFlags(detectedRedFlags);
+      setCurrentStep('red-flag-alert');
+      return;
     }
     
-    if (responses.sleepQuality.includes('improved') || responses.sleepQuality.includes('better')) {
-      responses_array.push("Better sleep is a great sign for your recovery.");
-    }
-    
-    if (responses.hydrationStatus.includes('yes') || responses.hydrationStatus.includes('drinking')) {
-      responses_array.push("Staying hydrated is so important - keep it up!");
-    }
-    
-    if (responses.medicationCompliance.includes('yes') || responses.medicationCompliance.includes('taking')) {
-      responses_array.push("Following your medication routine shows great commitment to your recovery.");
-    }
-
-    return responses_array.length > 0 
-      ? responses_array.join(' ') 
-      : "Thanks for sharing - this helps us track your recovery journey.";
+    // Continue with adaptive follow-up
+    setCurrentStep('follow-up');
   };
 
   const handleCompleteCheckIn = () => {
-    const personalizedMessage = generatePersonalizedResponse(userResponses);
+    const riskAwareMessage = generateRiskAwareResponse(currentResponse, profile);
     
-    // Calculate recovery score based on responses
+    // Calculate recovery score based on conversation
     let recoveryScore = 50;
-    if (userResponses.overallFeeling.includes('better') || userResponses.overallFeeling.includes('good')) recoveryScore += 20;
-    if (userResponses.sleepQuality.includes('improved') || userResponses.sleepQuality.includes('better')) recoveryScore += 15;
-    if (userResponses.hydrationStatus.includes('yes')) recoveryScore += 10;
-    if (userResponses.medicationCompliance.includes('yes')) recoveryScore += 15;
+    if (currentResponse.toLowerCase().includes('better') || currentResponse.toLowerCase().includes('good')) {
+      recoveryScore += 20;
+    }
+    if (currentResponse.toLowerCase().includes('sleep')) {
+      recoveryScore += 10;
+    }
+    if (currentResponse.toLowerCase().includes('water') || currentResponse.toLowerCase().includes('drinking')) {
+      recoveryScore += 10;
+    }
     
     const updatedProfile = {
       ...profile,
@@ -136,7 +121,7 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
     
     toast({
       title: "Check-in Complete! 🌟",
-      description: personalizedMessage,
+      description: riskAwareMessage,
     });
     
     onClose();
@@ -153,7 +138,7 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
           <div className="bg-green-50 p-4 rounded-lg space-y-2">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="w-4 h-4 text-green-600" />
-              <span className="font-medium text-green-800">Your Progress This Week</span>
+              <span className="font-medium text-green-800">Your Progress Trends</span>
             </div>
             {trendFeedback.map((feedback, index) => (
               <p key={index} className="text-green-800 text-sm">{feedback}</p>
@@ -168,7 +153,7 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
 
       <div className="space-y-3">
         <div className="text-center text-sm text-gray-500 mb-4">
-          First, how many days has it been since your hospital discharge?
+          How many days has it been since your hospital discharge?
         </div>
         
         <div className="flex items-center gap-3 justify-center">
@@ -197,13 +182,14 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
         </div>
       </div>
 
-      {canUseQuickCheckIn ? (
-        <div className="space-y-3">
-          <div className="text-center text-sm text-gray-500 mb-4">
-            Since you've been doing well lately:
-          </div>
-          
-          <div className="grid grid-cols-1 gap-3">
+      {/* Quick Check-In Options */}
+      <div className="space-y-3">
+        <div className="text-center text-sm text-gray-500 mb-4">
+          Quick check-in options:
+        </div>
+        
+        <div className="grid grid-cols-1 gap-3">
+          {canUseQuickCheckIn && (
             <Button 
               onClick={() => handleQuickResponse('all-good')}
               className="h-auto p-4 bg-green-600 hover:bg-green-700"
@@ -214,128 +200,64 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
                 <div className="text-xs opacity-90">Feeling stable, following my care routine</div>
               </div>
             </Button>
-            
-            <Button 
-              onClick={() => handleQuickResponse('need-update')}
-              variant="outline"
-              className="h-auto p-4"
-            >
-              <div className="text-center">
-                <MessageCircle className="w-6 h-6 mx-auto mb-2" />
-                <div className="font-medium">📝 Something to Share</div>
-                <div className="text-xs opacity-70">Let me tell you how I'm doing</div>
-              </div>
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex gap-3">
+          )}
+          
           <Button 
-            variant="outline" 
-            onClick={onClose}
-            className="flex-1"
+            onClick={() => handleQuickResponse('need-update')}
+            variant="outline"
+            className="h-auto p-4"
           >
-            Maybe Later
+            <div className="text-center">
+              <MessageCircle className="w-6 h-6 mx-auto mb-2" />
+              <div className="font-medium">📝 Something to Share</div>
+              <div className="text-xs opacity-70">Want to update you on how I'm doing</div>
+            </div>
           </Button>
+
           <Button 
-            onClick={() => setCurrentStep('symptom-chat')}
-            className="flex-1 bg-blue-600 hover:bg-blue-700"
+            onClick={() => handleQuickResponse('not-feeling-great')}
+            className="h-auto p-4 bg-orange-500 hover:bg-orange-600"
           >
-            Let's Chat
+            <div className="text-center">
+              <AlertTriangle className="w-6 h-6 mx-auto mb-2" />
+              <div className="font-medium">😔 Not Feeling Great</div>
+              <div className="text-xs opacity-90">Need some extra support today</div>
+            </div>
           </Button>
         </div>
-      )}
+      </div>
     </div>
   );
 
-  const renderSymptomChatStep = () => (
+  const renderAdaptiveChatStep = () => (
     <div className="space-y-6">
       <div className="text-center">
         <h3 className="text-lg font-medium text-gray-900 mb-2">
-          Thanks for sharing more details! 😊
+          {adaptiveQuestions.greeting || "Thanks for sharing more details! 😊"}
         </h3>
         <p className="text-gray-600">
-          I'd love to hear how you've been feeling. Just chat naturally - no need for formal answers.
+          {adaptiveQuestions.followUp || "How are things going today?"}
         </p>
       </div>
 
       <div className="space-y-4">
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">
-            How have you been feeling overall today?
+            {adaptiveQuestions.mainQuestion || "Tell me how you're feeling:"}
           </label>
           <Input
             placeholder="E.g., 'Feeling a bit better than yesterday' or 'Still quite tired'"
-            value={userResponses.overallFeeling}
-            onChange={(e) => handleSymptomUpdate('overallFeeling', e.target.value)}
+            value={currentResponse}
+            onChange={(e) => setCurrentResponse(e.target.value)}
             className="w-full"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">
-            Any specific symptoms you'd like to mention?
-          </label>
-          <Input
-            placeholder="E.g., 'Headache this morning' or 'Less dizzy than before'"
-            value={userResponses.specificSymptoms}
-            onChange={(e) => handleSymptomUpdate('specificSymptoms', e.target.value)}
-            className="w-full"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">
-            How did you sleep last night?
-          </label>
-          <Input
-            placeholder="E.g., 'Slept better, about 7 hours' or 'Still waking up a lot'"
-            value={userResponses.sleepQuality}
-            onChange={(e) => handleSymptomUpdate('sleepQuality', e.target.value)}
-            className="w-full"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">
-            How's your hydration and eating going?
-          </label>
-          <Input
-            placeholder="E.g., 'Drinking more water today' or 'Not much appetite yet'"
-            value={userResponses.hydrationStatus}
-            onChange={(e) => handleSymptomUpdate('hydrationStatus', e.target.value)}
-            className="w-full"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">
-            How are you doing with your medications?
-          </label>
-          <Input
-            placeholder="E.g., 'Taking everything as prescribed' or 'Forgot this morning'"
-            value={userResponses.medicationCompliance}
-            onChange={(e) => handleSymptomUpdate('medicationCompliance', e.target.value)}
-            className="w-full"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">
-            Anything else you'd like to share?
-          </label>
-          <Input
-            placeholder="E.g., 'Walked around the block today!' or 'Feeling anxious'"
-            value={userResponses.customNotes}
-            onChange={(e) => handleSymptomUpdate('customNotes', e.target.value)}
-            className="w-full"
+            onKeyPress={(e) => e.key === 'Enter' && currentResponse.trim() && handleAdaptiveResponse(currentResponse)}
           />
         </div>
       </div>
 
       <div className="bg-blue-50 p-3 rounded-lg">
         <p className="text-sm text-blue-800">
-          💡 <strong>Remember:</strong> This helps us track your wellness journey. 
+          💡 <strong>Remember:</strong> Thanks for sharing — this helps us track your recovery journey. 
           Always contact your provider if you have urgent concerns.
         </p>
       </div>
@@ -349,12 +271,110 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
           Back
         </Button>
         <Button 
+          onClick={() => handleAdaptiveResponse(currentResponse)}
+          className="flex-1 bg-blue-600 hover:bg-blue-700"
+          disabled={!currentResponse.trim()}
+        >
+          Continue
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderFollowUpStep = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          Thanks for sharing that with me 💙
+        </h3>
+        <p className="text-gray-600">
+          {adaptiveQuestions.specificQuestion || "Can you tell me a bit more about how you're managing today?"}
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {adaptiveQuestions.questions?.map((question, index) => (
+          <div key={index} className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              {question}
+            </label>
+            <Input
+              placeholder="Share as much or as little as you'd like..."
+              className="w-full"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-yellow-50 p-3 rounded-lg">
+        <p className="text-sm text-yellow-800">
+          💭 <strong>Note:</strong> These symptoms can happen after sepsis. Let's keep an eye on them together.
+        </p>
+      </div>
+
+      <div className="flex gap-3">
+        <Button 
+          variant="outline" 
+          onClick={() => setCurrentStep('adaptive-chat')}
+          className="flex-1"
+        >
+          Back
+        </Button>
+        <Button 
           onClick={handleCompleteCheckIn}
           className="flex-1 bg-blue-600 hover:bg-blue-700"
-          disabled={!userResponses.overallFeeling.trim()}
         >
           Complete Check-In
         </Button>
+      </div>
+    </div>
+  );
+
+  const renderRedFlagAlert = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          Let's Get You Some Support
+        </h3>
+        <p className="text-gray-600">
+          Based on your responses, this may warrant a quick chat with your provider.
+        </p>
+      </div>
+
+      <div className="bg-red-50 p-4 rounded-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <Flag className="w-4 h-4 text-red-600" />
+          <span className="font-medium text-red-800">We noticed:</span>
+        </div>
+        <ul className="text-red-800 text-sm space-y-1">
+          {redFlags.map((flag, index) => (
+            <li key={index}>• {flag}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-3">
+        <Button 
+          className="w-full bg-red-600 hover:bg-red-700 h-12"
+        >
+          <AlertTriangle className="w-5 h-5 mr-2" />
+          Contact My Provider
+        </Button>
+        
+        <Button 
+          variant="outline"
+          onClick={handleCompleteCheckIn}
+          className="w-full"
+        >
+          I'll Keep Monitoring
+        </Button>
+      </div>
+
+      <div className="bg-gray-50 p-3 rounded-lg">
+        <p className="text-xs text-gray-600 text-center">
+          This timeline is for wellness tracking only and does not replace medical advice.
+        </p>
       </div>
     </div>
   );
@@ -369,7 +389,9 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
       </CardHeader>
       <CardContent>
         {currentStep === 'greeting' && renderGreetingStep()}
-        {currentStep === 'symptom-chat' && renderSymptomChatStep()}
+        {currentStep === 'adaptive-chat' && renderAdaptiveChatStep()}
+        {currentStep === 'follow-up' && renderFollowUpStep()}
+        {currentStep === 'red-flag-alert' && renderRedFlagAlert()}
       </CardContent>
     </Card>
   );
