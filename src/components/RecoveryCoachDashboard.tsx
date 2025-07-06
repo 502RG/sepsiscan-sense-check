@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { 
   Heart, 
   AlertTriangle, 
@@ -43,12 +43,17 @@ const RecoveryCoachDashboard: React.FC<RecoveryCoachDashboardProps> = ({
   const [checkInData, setCheckInData] = useState({
     overallFeeling: '' as 'Great' | 'Okay' | 'Off' | 'Sick' | '',
     recoverySymptoms: [] as string[],
+    otherSymptoms: '',
     medicationCompliance: false,
+    medicationOther: '',
     hydrationCompliance: false,
+    hydrationOther: '',
     nutritionCompliance: false,
+    nutritionOther: '',
     restHours: 7,
     tookNaps: false,
     moodRating: 5,
+    woundQuestion: '',
     woundChecked: false,
     cognitiveIssues: false
   });
@@ -72,10 +77,16 @@ const RecoveryCoachDashboard: React.FC<RecoveryCoachDashboardProps> = ({
       return;
     }
 
-    // Only call processRecoveryCheckIn if overallFeeling is valid
+    // Combine regular symptoms with other symptoms
+    const allSymptoms = [...checkInData.recoverySymptoms];
+    if (checkInData.otherSymptoms.trim()) {
+      allSymptoms.push(checkInData.otherSymptoms.trim());
+    }
+
     const validCheckInData = {
       ...checkInData,
-      overallFeeling: checkInData.overallFeeling as 'Great' | 'Okay' | 'Off' | 'Sick'
+      overallFeeling: checkInData.overallFeeling as 'Great' | 'Okay' | 'Off' | 'Sick',
+      recoverySymptoms: allSymptoms
     };
 
     const result = processRecoveryCheckIn(profile, validCheckInData);
@@ -99,12 +110,17 @@ const RecoveryCoachDashboard: React.FC<RecoveryCoachDashboardProps> = ({
     setCheckInData({
       overallFeeling: '',
       recoverySymptoms: [],
+      otherSymptoms: '',
       medicationCompliance: false,
+      medicationOther: '',
       hydrationCompliance: false,
+      hydrationOther: '',
       nutritionCompliance: false,
+      nutritionOther: '',
       restHours: 7,
       tookNaps: false,
       moodRating: 5,
+      woundQuestion: '',
       woundChecked: false,
       cognitiveIssues: false
     });
@@ -172,43 +188,91 @@ const RecoveryCoachDashboard: React.FC<RecoveryCoachDashboardProps> = ({
                   </div>
                 ))}
               </div>
+              
+              {/* Other Symptoms Input */}
+              <div className="space-y-2">
+                <Label htmlFor="otherSymptoms" className="text-sm font-medium">Other symptoms (please describe):</Label>
+                <Input
+                  id="otherSymptoms"
+                  placeholder="e.g., joint pain, headache, skin rash..."
+                  value={checkInData.otherSymptoms}
+                  onChange={(e) => setCheckInData(prev => ({ ...prev, otherSymptoms: e.target.value }))}
+                />
+              </div>
             </div>
 
             <Separator />
 
             {/* Daily Compliance */}
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="medications"
-                  checked={checkInData.medicationCompliance}
-                  onCheckedChange={(checked) => 
-                    setCheckInData(prev => ({ ...prev, medicationCompliance: checked as boolean }))
-                  }
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="medications"
+                    checked={checkInData.medicationCompliance}
+                    onCheckedChange={(checked) => 
+                      setCheckInData(prev => ({ ...prev, medicationCompliance: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="medications">Completed prescribed medications today</Label>
+                </div>
+                <Input
+                  placeholder="If no, please explain (e.g., forgot, side effects, ran out)..."
+                  value={checkInData.medicationOther}
+                  onChange={(e) => setCheckInData(prev => ({ ...prev, medicationOther: e.target.value }))}
+                  className="ml-6 text-sm"
                 />
-                <Label htmlFor="medications">Completed prescribed medications today</Label>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="hydration"
-                  checked={checkInData.hydrationCompliance}
-                  onCheckedChange={(checked) => 
-                    setCheckInData(prev => ({ ...prev, hydrationCompliance: checked as boolean }))
-                  }
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="hydration"
+                    checked={checkInData.hydrationCompliance}
+                    onCheckedChange={(checked) => 
+                      setCheckInData(prev => ({ ...prev, hydrationCompliance: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="hydration">Drinking enough water today</Label>
+                </div>
+                <Input
+                  placeholder="If no, please explain (e.g., nausea, forgot, preference for other fluids)..."
+                  value={checkInData.hydrationOther}
+                  onChange={(e) => setCheckInData(prev => ({ ...prev, hydrationOther: e.target.value }))}
+                  className="ml-6 text-sm"
                 />
-                <Label htmlFor="hydration">Drinking enough water today</Label>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="nutrition"
-                  checked={checkInData.nutritionCompliance}
-                  onCheckedChange={(checked) => 
-                    setCheckInData(prev => ({ ...prev, nutritionCompliance: checked as boolean }))
-                  }
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="nutrition"
+                    checked={checkInData.nutritionCompliance}
+                    onCheckedChange={(checked) => 
+                      setCheckInData(prev => ({ ...prev, nutritionCompliance: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="nutrition">Eating well today</Label>
+                </div>
+                <Input
+                  placeholder="If no, please explain (e.g., no appetite, nausea, difficulty chewing)..."
+                  value={checkInData.nutritionOther}
+                  onChange={(e) => setCheckInData(prev => ({ ...prev, nutritionOther: e.target.value }))}
+                  className="ml-6 text-sm"
                 />
-                <Label htmlFor="nutrition">Eating well today</Label>
+              </div>
+
+              {/* Wound Question */}
+              <div className="space-y-2">
+                <Label htmlFor="woundQuestion" className="text-base font-medium">
+                  How does your wound/incision site look and feel today?
+                </Label>
+                <Input
+                  id="woundQuestion"
+                  placeholder="e.g., healing well, some redness, painful, swollen..."
+                  value={checkInData.woundQuestion}
+                  onChange={(e) => setCheckInData(prev => ({ ...prev, woundQuestion: e.target.value }))}
+                />
               </div>
 
               <div className="flex items-center space-x-2">
