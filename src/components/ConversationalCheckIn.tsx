@@ -25,7 +25,7 @@ interface ConversationalCheckInProps {
   onClose: () => void;
 }
 
-type CheckInStep = 'greeting' | 'quick-response' | 'adaptive-chat' | 'follow-up' | 'red-flag-alert';
+type CheckInStep = 'greeting' | 'quick-response' | 'adaptive-chat' | 'follow-up' | 'red-flag-alert' | 'recovery-insights';
 type ResponseType = 'all-good' | 'need-update' | 'not-feeling-great';
 
 const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({ 
@@ -38,6 +38,11 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
   const [currentResponse, setCurrentResponse] = useState('');
   const [redFlags, setRedFlags] = useState<string[]>([]);
   const [conversationHistory, setConversationHistory] = useState<string[]>([]);
+  const [recoveryInsights, setRecoveryInsights] = useState<{type: 'positive' | 'concern', message: string, recommendations: string[]}>({
+    type: 'positive',
+    message: '',
+    recommendations: []
+  });
 
   const conversationalGreeting = generateConversationalGreeting(profile);
   const followUpQuestion = generateFollowUpQuestion(profile);
@@ -47,28 +52,81 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
   const progressPercentage = Math.min((recoveryWeek / 6) * 100, 100);
   const adaptiveQuestions = generateAdaptiveQuestions(profile);
 
+  const generateRecoveryInsights = (response: string, isQuickGood = false) => {
+    const responseLower = response.toLowerCase();
+    
+    // Positive/encouraging insights
+    if (isQuickGood || responseLower.includes('better') || responseLower.includes('good') || responseLower.includes('stable')) {
+      setRecoveryInsights({
+        type: 'positive',
+        message: "Your recovery journey is on a positive track! 🌟",
+        recommendations: [
+          "Continue following your current care routine - it's working well",
+          "Keep staying hydrated and getting adequate rest",
+          "Remember that recovery is a gradual process, and you're doing great",
+          "Consider keeping a daily journal to track your progress"
+        ]
+      });
+    }
+    // Concerning insights
+    else if (responseLower.includes('tired') || responseLower.includes('fatigue') || responseLower.includes('weak')) {
+      setRecoveryInsights({
+        type: 'concern',
+        message: "Fatigue is common during sepsis recovery, but let's help you manage it better.",
+        recommendations: [
+          "Try to get 7-9 hours of sleep each night",
+          "Take short naps (20-30 minutes) during the day if needed",
+          "Gradually increase physical activity as tolerated",
+          "Ensure you're eating nutritious meals regularly",
+          "Consider discussing with your provider if fatigue persists"
+        ]
+      });
+    }
+    else if (responseLower.includes('pain') || responseLower.includes('ache') || responseLower.includes('hurt')) {
+      setRecoveryInsights({
+        type: 'concern',
+        message: "Pain management is important for your recovery process.",
+        recommendations: [
+          "Take prescribed pain medications as directed",
+          "Apply heat or cold therapy as recommended by your provider",
+          "Try gentle stretching or movement if approved",
+          "Contact your provider if pain worsens or doesn't improve",
+          "Consider relaxation techniques like deep breathing"
+        ]
+      });
+    }
+    else if (responseLower.includes('anxious') || responseLower.includes('worried') || responseLower.includes('scared')) {
+      setRecoveryInsights({
+        type: 'concern',
+        message: "It's normal to feel anxious during recovery - you're not alone in this.",
+        recommendations: [
+          "Practice deep breathing exercises daily",
+          "Stay connected with family and friends for support",
+          "Consider joining a sepsis survivor support group",
+          "Talk to your provider about your concerns",
+          "Focus on small daily achievements to build confidence"
+        ]
+      });
+    }
+    else {
+      setRecoveryInsights({
+        type: 'positive',
+        message: "Thanks for sharing - this helps us track your recovery journey.",
+        recommendations: [
+          "Continue monitoring your symptoms daily",
+          "Follow your prescribed medication schedule",
+          "Stay hydrated and eat nutritious meals",
+          "Contact your provider with any concerning changes"
+        ]
+      });
+    }
+  };
+
   const handleQuickResponse = (response: ResponseType) => {
     if (response === 'all-good') {
-      // Process quick "all good" response with risk-aware language
-      const riskAwareMessage = generateRiskAwareResponse('stable', profile);
-      
-      const updatedProfile = {
-        ...profile,
-        recoveryMode: {
-          ...profile.recoveryMode,
-          lastRecoveryScore: 85,
-          recoveryWeek
-        }
-      };
-      
-      onUpdateProfile(updatedProfile);
-      
-      toast({
-        title: "Thanks for checking in! 💚",
-        description: riskAwareMessage,
-      });
-      
-      onClose();
+      // Generate insights for positive response
+      generateRecoveryInsights('stable', true);
+      setCurrentStep('recovery-insights');
     } else if (response === 'need-update') {
       setCurrentStep('adaptive-chat');
     } else if (response === 'not-feeling-great') {
@@ -94,6 +152,12 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
   };
 
   const handleCompleteCheckIn = () => {
+    // Generate insights based on user responses
+    generateRecoveryInsights(currentResponse);
+    setCurrentStep('recovery-insights');
+  };
+
+  const handleFinalComplete = () => {
     const riskAwareMessage = generateRiskAwareResponse(currentResponse, profile);
     
     // Calculate recovery score based on conversation
@@ -379,6 +443,66 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
     </div>
   );
 
+  const renderRecoveryInsights = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <div className={`w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center ${
+          recoveryInsights.type === 'positive' ? 'bg-green-100' : 'bg-yellow-100'
+        }`}>
+          {recoveryInsights.type === 'positive' ? 
+            <CheckCircle className="w-6 h-6 text-green-600" /> : 
+            <AlertTriangle className="w-6 h-6 text-yellow-600" />
+          }
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          Recovery Insights
+        </h3>
+        <p className={`text-base font-medium ${
+          recoveryInsights.type === 'positive' ? 'text-green-800' : 'text-yellow-800'
+        }`}>
+          {recoveryInsights.message}
+        </p>
+      </div>
+
+      <div className={`p-4 rounded-lg border-l-4 ${
+        recoveryInsights.type === 'positive' ? 
+          'bg-green-50 border-green-500' : 
+          'bg-yellow-50 border-yellow-500'
+      }`}>
+        <h4 className={`font-medium mb-3 ${
+          recoveryInsights.type === 'positive' ? 'text-green-900' : 'text-yellow-900'
+        }`}>
+          Personalized Recommendations:
+        </h4>
+        <ul className="space-y-2">
+          {recoveryInsights.recommendations.map((recommendation, index) => (
+            <li key={index} className={`flex items-start gap-2 text-sm ${
+              recoveryInsights.type === 'positive' ? 'text-green-800' : 'text-yellow-800'
+            }`}>
+              <span className="text-lg">•</span>
+              <span>{recommendation}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="bg-blue-50 p-3 rounded-lg">
+        <p className="text-sm text-blue-800">
+          💡 <strong>Remember:</strong> These insights are personalized based on your responses. 
+          Always consult your healthcare provider for medical decisions.
+        </p>
+      </div>
+
+      <Button 
+        onClick={handleFinalComplete}
+        className="w-full bg-blue-600 hover:bg-blue-700 h-12"
+      >
+        <Heart className="w-5 h-5 mr-2" />
+        Complete Check-In
+      </Button>
+    </div>
+  );
+
   return (
     <Card className="shadow-lg border-0 bg-white/95 backdrop-blur max-w-2xl mx-auto">
       <CardHeader>
@@ -392,6 +516,7 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
         {currentStep === 'adaptive-chat' && renderAdaptiveChatStep()}
         {currentStep === 'follow-up' && renderFollowUpStep()}
         {currentStep === 'red-flag-alert' && renderRedFlagAlert()}
+        {currentStep === 'recovery-insights' && renderRecoveryInsights()}
       </CardContent>
     </Card>
   );
