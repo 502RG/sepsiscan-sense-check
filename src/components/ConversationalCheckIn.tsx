@@ -54,69 +54,154 @@ const ConversationalCheckIn: React.FC<ConversationalCheckInProps> = ({
 
   const generateRecoveryInsights = (response: string, isQuickGood = false) => {
     const responseLower = response.toLowerCase();
+    const conversationContext = conversationHistory.join(' ').toLowerCase();
+    const fullContext = `${responseLower} ${conversationContext}`;
+    const weekProgress = calculateRecoveryWeek(daysSinceDischarge);
     
-    // Positive/encouraging insights
-    if (isQuickGood || responseLower.includes('better') || responseLower.includes('good') || responseLower.includes('stable')) {
+    // Analyze multiple symptom categories for targeted insights
+    const hasPositiveIndicators = isQuickGood || 
+      responseLower.includes('better') || responseLower.includes('good') || 
+      responseLower.includes('stable') || responseLower.includes('improving') ||
+      responseLower.includes('fine') || responseLower.includes('great');
+    
+    const hasFatigueSymptoms = responseLower.includes('tired') || 
+      responseLower.includes('fatigue') || responseLower.includes('weak') ||
+      responseLower.includes('exhausted') || responseLower.includes('drained');
+    
+    const hasPainSymptoms = responseLower.includes('pain') || 
+      responseLower.includes('ache') || responseLower.includes('hurt') ||
+      responseLower.includes('sore') || responseLower.includes('tender');
+    
+    const hasEmotionalConcerns = responseLower.includes('anxious') || 
+      responseLower.includes('worried') || responseLower.includes('scared') ||
+      responseLower.includes('depressed') || responseLower.includes('overwhelmed');
+    
+    const hasSleepIssues = (responseLower.includes('sleep') || responseLower.includes('rest')) && 
+      (responseLower.includes('bad') || responseLower.includes('poor') || 
+       responseLower.includes('trouble') || responseLower.includes('difficult') ||
+       responseLower.includes('can\'t'));
+    
+    const hasAppetiteIssues = responseLower.includes('appetite') || 
+      (responseLower.includes('eating') && responseLower.includes('trouble')) ||
+      responseLower.includes('nausea') || responseLower.includes('food');
+    
+    const hasBreathingIssues = responseLower.includes('breathing') || 
+      responseLower.includes('breath') || responseLower.includes('winded') ||
+      responseLower.includes('shortness');
+    
+    const hasMemoryIssues = responseLower.includes('memory') || 
+      responseLower.includes('forget') || responseLower.includes('confused') ||
+      responseLower.includes('concentration') || responseLower.includes('focus');
+
+    // Generate contextual insights based on specific symptom combinations
+    if (hasPositiveIndicators && !hasFatigueSymptoms && !hasPainSymptoms && !hasEmotionalConcerns) {
       setRecoveryInsights({
         type: 'positive',
-        message: "Your recovery journey is on a positive track! 🌟",
+        message: `Excellent! Your recovery in week ${weekProgress} is showing positive signs. 🌟`,
         recommendations: [
-          "Continue following your current care routine - it's working well",
-          "Keep staying hydrated and getting adequate rest",
-          "Remember that recovery is a gradual process, and you're doing great",
-          "Consider keeping a daily journal to track your progress"
+          "Your current approach is working - keep following your care routine",
+          "Consider gradually increasing light activities as you feel comfortable",
+          "Maintain your hydration and nutrition habits",
+          "Continue tracking your progress to celebrate these improvements",
+          "Remember this progress when you have tougher days ahead"
         ]
       });
     }
-    // Concerning insights
-    else if (responseLower.includes('tired') || responseLower.includes('fatigue') || responseLower.includes('weak')) {
+    else if (hasFatigueSymptoms && hasSleepIssues) {
       setRecoveryInsights({
         type: 'concern',
-        message: "Fatigue is common during sepsis recovery, but let's help you manage it better.",
+        message: "Fatigue combined with sleep challenges is very common after sepsis - let's address both together.",
         recommendations: [
-          "Try to get 7-9 hours of sleep each night",
-          "Take short naps (20-30 minutes) during the day if needed",
-          "Gradually increase physical activity as tolerated",
-          "Ensure you're eating nutritious meals regularly",
-          "Consider discussing with your provider if fatigue persists"
+          "Establish a consistent bedtime routine even if sleep quality varies",
+          "Limit screen time 1-2 hours before bed to improve sleep quality",
+          "Take strategic 20-30 minute naps before 3 PM if needed",
+          "Create a restful sleep environment (cool, dark, quiet)",
+          "Discuss persistent sleep issues with your provider if they continue beyond 2 weeks",
+          "Practice gentle relaxation techniques before bedtime"
         ]
       });
     }
-    else if (responseLower.includes('pain') || responseLower.includes('ache') || responseLower.includes('hurt')) {
+    else if (hasPainSymptoms && hasEmotionalConcerns) {
       setRecoveryInsights({
         type: 'concern',
-        message: "Pain management is important for your recovery process.",
+        message: "Managing both physical discomfort and emotional challenges requires comprehensive support.",
         recommendations: [
-          "Take prescribed pain medications as directed",
-          "Apply heat or cold therapy as recommended by your provider",
-          "Try gentle stretching or movement if approved",
-          "Contact your provider if pain worsens or doesn't improve",
-          "Consider relaxation techniques like deep breathing"
+          "Take prescribed pain medications exactly as directed - don't skip doses",
+          "Use heat/cold therapy as recommended for additional pain relief",
+          "Practice deep breathing or meditation when pain increases anxiety",
+          "Stay connected with supportive family and friends daily",
+          "Keep a pain and mood diary to identify patterns",
+          "Consider asking your provider about integrated pain and emotional support strategies"
         ]
       });
     }
-    else if (responseLower.includes('anxious') || responseLower.includes('worried') || responseLower.includes('scared')) {
+    else if (hasAppetiteIssues || hasBreathingIssues) {
       setRecoveryInsights({
         type: 'concern',
-        message: "It's normal to feel anxious during recovery - you're not alone in this.",
+        message: "These symptoms warrant attention - let's ensure you get proper support.",
         recommendations: [
-          "Practice deep breathing exercises daily",
-          "Stay connected with family and friends for support",
-          "Consider joining a sepsis survivor support group",
-          "Talk to your provider about your concerns",
-          "Focus on small daily achievements to build confidence"
+          "Contact your healthcare provider within 24-48 hours to discuss these symptoms",
+          "Try smaller, more frequent meals if appetite is challenging",
+          "Stay hydrated with small sips throughout the day, even when eating is difficult",
+          "Rest immediately when experiencing shortness of breath",
+          "Avoid overexertion and ask for help with daily tasks",
+          "Keep a symptom log with times and triggers to share with your provider"
+        ]
+      });
+    }
+    else if (hasMemoryIssues) {
+      setRecoveryInsights({
+        type: 'concern',
+        message: "Cognitive symptoms like memory or concentration issues can persist after sepsis - you're not losing your mind.",
+        recommendations: [
+          "Be patient with yourself - cognitive recovery often takes 3-6 months",
+          "Use memory aids like phone reminders, lists, and calendars liberally",
+          "Break complex tasks into smaller, manageable steps",
+          "Prioritize rest as fatigue significantly worsens cognitive symptoms",
+          "Discuss these symptoms with your provider for potential cognitive therapy",
+          "Consider gentle brain exercises or puzzles when you feel up to it"
+        ]
+      });
+    }
+    else if (hasFatigueSymptoms) {
+      setRecoveryInsights({
+        type: 'concern',
+        message: "Fatigue is the most common lingering effect after sepsis - your body is still healing.",
+        recommendations: [
+          "Listen to your body's energy signals and rest when needed",
+          "Plan important activities during your peak energy times (often mornings)",
+          "Use the 'spoon theory' - budget your energy for what matters most",
+          "Gradually increase activity levels by 10-15% weekly as tolerated",
+          "Ensure adequate protein and nutrition to support energy recovery",
+          "Track your energy patterns to identify what helps or hinders recovery"
+        ]
+      });
+    }
+    else if (hasEmotionalConcerns) {
+      setRecoveryInsights({
+        type: 'concern',
+        message: "Emotional challenges are a normal part of sepsis recovery - seeking support shows wisdom.",
+        recommendations: [
+          "Practice daily stress-reduction techniques like deep breathing or meditation",
+          "Maintain regular contact with supportive friends and family",
+          "Consider joining online sepsis survivor communities for peer support",
+          "Be open with your healthcare team about your emotional state",
+          "Set small, achievable daily goals to rebuild confidence gradually",
+          "Consider professional counseling if emotional symptoms persist or worsen"
         ]
       });
     }
     else {
       setRecoveryInsights({
         type: 'positive',
-        message: "Thanks for sharing - this helps us track your recovery journey.",
+        message: `Thank you for sharing your recovery update - you're progressing through week ${weekProgress} of your healing journey.`,
         recommendations: [
-          "Continue monitoring your symptoms daily",
-          "Follow your prescribed medication schedule",
-          "Stay hydrated and eat nutritious meals",
-          "Contact your provider with any concerning changes"
+          "Continue monitoring your daily symptoms and energy levels",
+          "Maintain your prescribed medication schedule consistently",
+          "Focus on balanced nutrition and staying well-hydrated",
+          "Get adequate rest and listen to your body's recovery signals",
+          "Contact your provider promptly with any new or concerning changes",
+          "Remember that recovery is not linear - some days will be better than others"
         ]
       });
     }
