@@ -32,6 +32,7 @@ import SettingsPage from "@/components/SettingsPage";
 import OfflineBanner from "@/components/OfflineBanner";
 import EmergencyConfirmationDialog from "@/components/EmergencyConfirmationDialog";
 import OfflineDataViewer from "@/components/OfflineDataViewer";
+import RecoveryDashboard from "@/components/RecoveryDashboard";
 
 const Index = () => {
   const [step, setStep] = useState<'profile' | 'greeting' | 'assessment' | 'subjective' | 'results' | 'settings'>('profile');
@@ -574,6 +575,16 @@ const Index = () => {
               </p>
             </CardContent>
           </Card>
+          
+          {/* Recovery Dashboard */}
+          {selectedProfile && (
+            <div className="mt-6">
+              <RecoveryDashboard 
+                profile={selectedProfile}
+                onUpdateProfile={handleUpdateProfile}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
