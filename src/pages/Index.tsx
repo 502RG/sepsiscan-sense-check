@@ -487,7 +487,7 @@ const Index = () => {
     }
   };
 
-  if (step === 'profile') {
+  if (!selectedProfile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
         <div className="w-full max-w-md">
@@ -507,6 +507,27 @@ const Index = () => {
       </div>
     );
   }
+
+  // Auto-enable recovery mode if not enabled
+  const ensureRecoveryModeEnabled = () => {
+    if (!selectedProfile.recoveryMode?.isEnabled) {
+      const updatedProfile = {
+        ...selectedProfile,
+        recoveryMode: {
+          isEnabled: true,
+          startDate: new Date().toISOString(),
+          baselineEstablished: false,
+          checkInFrequency: 'daily' as const,
+          caregiverNotifications: false,
+          coachEnabled: false,
+          recoveryWeek: 1
+        }
+      };
+      handleUpdateProfile(updatedProfile);
+      return updatedProfile;
+    }
+    return selectedProfile;
+  };
 
   if (step === 'settings') {
     return (
@@ -528,6 +549,9 @@ const Index = () => {
   }
 
   if (step === 'greeting') {
+    // Ensure recovery mode is enabled for the conversational check-in
+    const profileWithRecovery = ensureRecoveryModeEnabled();
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
         <div className="w-full max-w-md">
@@ -547,7 +571,7 @@ const Index = () => {
                 <Shield className="w-8 h-8 text-white" />
               </div>
               <CardTitle className="text-2xl font-bold text-gray-900">
-                Welcome back, {selectedProfile?.name}!
+                Welcome back, {profileWithRecovery?.name}!
               </CardTitle>
               <p className="text-gray-600 mt-2">
                 Ready for your health check-in? This takes less than 1 minute.
@@ -576,15 +600,13 @@ const Index = () => {
             </CardContent>
           </Card>
           
-          {/* Recovery Dashboard */}
-          {selectedProfile && (
-            <div className="mt-6">
-              <RecoveryDashboard 
-                profile={selectedProfile}
-                onUpdateProfile={handleUpdateProfile}
-              />
-            </div>
-          )}
+          {/* Recovery Dashboard - Now shows conversational check-in */}
+          <div className="mt-6">
+            <RecoveryDashboard 
+              profile={profileWithRecovery}
+              onUpdateProfile={handleUpdateProfile}
+            />
+          </div>
         </div>
       </div>
     );
